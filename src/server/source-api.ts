@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { providerError } from "@/lib/provider-error";
 import { detectAvatarGenderWithGemini, detectFaceKeypointsWithGemini, streamGeminiChat, synthesizeSpeech, transcribeAudio, type ChatHistoryMsg } from "./gemini";
 async function readBody(request: Request) {
   const raw = await request.text();
@@ -141,9 +142,9 @@ export async function handleApiTts(request: Request): Promise<Response> {
       },
     });
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
+    const { message, status } = providerError(err);
     return new Response(JSON.stringify({ error: message }), {
-      status: 500,
+      status,
       headers: { "Content-Type": "application/json; charset=utf-8" },
     });
   }

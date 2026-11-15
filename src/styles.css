@@ -140,6 +140,7 @@
 }
 
 @layer components {
+ .call-notice { position:fixed; top:62px; left:50%; transform:translateX(-50%); width:min(90%,560px); z-index:20; padding:10px 14px; border:1px solid var(--destructive); border-radius:6px; background:var(--background); color:var(--foreground); font-size:12px; overflow-wrap:anywhere; }
   .app-layout {
     min-height: 100dvh;
     display: flex;
