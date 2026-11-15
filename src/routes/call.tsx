@@ -88,6 +88,7 @@ function Call() {
   const [micNote, setMicNote] = useState("");
   const [secs, setSecs] = useState(0);
   const [typed, setTyped] = useState("");
+  const [caption, setCaption] = useState("");
   const [sending, setSending] = useState(false);
   const [listenOk, setListenOk] = useState(true);
   const [camOk, setCamOk] = useState(true);
@@ -231,8 +232,8 @@ function Call() {
     try {
       const cur = getProfile();
       await speak(text, cur.voice, cur.language, emotion, { localOnly: cur.localOnly });
-    } catch {
-      // Continuar si el audio está restringido
+    } catch (error) {
+      if (isCallValid(token)) setMicNote(error instanceof Error ? error.message : "La voz no está disponible.");
     } finally {
       stopBargeIn();
     }
@@ -261,11 +262,17 @@ function Call() {
       );
       r = res.text;
       em = res.emotion;
-    } catch {
-      r = "Perdona, intenta decírmelo de nuevo.";
+    } catch (error) {
+      if (!isCallValid(token)) return;
+      setMicNote(error instanceof Error ? error.message : "No se pudo obtener una respuesta.");
+      setPhase("paused");
+      textModeRef.current = true;
+      setTextMode(true);
+      return;
     }
     if (!isCallValid(token)) return;
     addMessage({ role: "assistant", content: r });
+    setCaption(r);
     setAiEmotion(em);
     setPhase("speaking");
     await speakWithBargeIn(r, token, em);
@@ -364,6 +371,7 @@ function Call() {
         ? `Hi, I'm ${cur.name}. Thanks for joining, let's get started whenever you're ready.`
         : "Hey! Good to see you.";
     const greetingEmotion: AvatarEmotion = isInterview ? "neutral" : "happy";
+    setCaption(hi);
     setAiEmotion(greetingEmotion);
     setPhase("speaking");
     await speakWithBargeIn(hi, token, greetingEmotion);
@@ -524,7 +532,7 @@ function Call() {
       </header>
 
       <div className="min-h-0 overflow-hidden px-3 py-2 sm:px-6 sm:py-3">
-        <div className="relative h-full w-full overflow-hidden rounded-2xl border border-border bg-[#0a0a0a]">
+        <div className="relative h-full w-full overflow-hidden rounded-2xl border border-border bg-background">
           <AnimatedAvatar
             src={p.avatar}
             name={p.name}
@@ -539,8 +547,9 @@ function Call() {
             className="h-full w-full"
           />
 
+          {caption && <p className="call-caption" aria-live="polite">{caption}</p>}
           {camActive && (
-            <div className="pointer-events-none absolute bottom-3 right-3 h-28 w-20 overflow-hidden rounded-xl border border-border bg-black/90 shadow-lg sm:h-36 sm:w-28">
+            <div className="pointer-events-none absolute bottom-3 right-3 h-28 w-20 overflow-hidden rounded-xl border border-border bg-background/90 shadow-lg sm:h-36 sm:w-28">
               <video
                 ref={userVideoRef}
                 playsInline
@@ -606,11 +615,11 @@ function Call() {
               </Button>
             </form>
           ) : (
-            <p className="max-w-lg truncate text-xs text-muted-foreground">
+            <p role={micNote ? "alert" : undefined} className="max-w-lg text-xs text-muted-foreground">
               {micNote ||
                 camNote ||
                 (!started
-                  ? "Pulsa llamar para iniciar con voz y cámara, o usa el teclado"
+                  ? "Voz y cámara listas para conectar"
                   : phase === "speaking"
                     ? "Habla en cualquier momento para intervenir"
                     : "Conectando estudio en vivo…")}
@@ -661,7 +670,7 @@ function Call() {
                     ? "bg-foreground text-background hover:bg-foreground/90"
                     : "bg-secondary text-foreground hover:bg-secondary/80"
                 } disabled:opacity-40`}
-                aria-label="Silenciar"
+                aria-label={muted ? "Activar micrófono" : "Silenciar"}
               >
                 {muted ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
               </Button>

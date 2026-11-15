@@ -82,8 +82,8 @@ export async function ensureUserFaceTracker(): Promise<boolean> {
   if (videoLandmarker) return true;
   if (!videoLandmarkerPromise) {
     videoLandmarkerPromise = (async () => {
-      const { FaceLandmarker, FilesetResolver } = await import("@mediapipe/tasks-vision");
-      const init = async (wasmBase: string) => {
+      const { FaceLandmarker } = await import("@mediapipe/tasks-vision");
+      const init = async () => {
         const fs = await Promise.resolve(visionFileset);
         return FaceLandmarker.createFromOptions(fs, {
           baseOptions: {
@@ -99,11 +99,7 @@ export async function ensureUserFaceTracker(): Promise<boolean> {
           minTrackingConfidence: 0.45,
         });
       };
-      try {
-        return await init("/mediapipe-wasm");
-      } catch {
-        return await init("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.32/wasm");
-      }
+      return await init();
     })();
   }
   try {
@@ -234,7 +230,7 @@ export function analyzeUserVideoFrame(
     }
 
     const labelEs = `${moodEs} · ${dirEs}`;
-    const contextPrompt = `El usuario está ${moodEs.toLowerCase()} y ${dirEs}.`;
+    const contextPrompt = `Se observan rasgos faciales compatibles con ${moodEs.toLowerCase()}, ${dirEs}. No establecen su emoción real: pregunta si es relevante.`;
 
     return {
       detected: true,

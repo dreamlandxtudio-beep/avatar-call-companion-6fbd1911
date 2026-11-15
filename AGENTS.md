@@ -28,3 +28,10 @@ use the editor.
   own key and store it in Secrets.
 - **Secrets.** Lovable manages them. Do not put secret values in the repo.
 <!-- LOVABLE:END -->
+
+## App architecture
+- Preserve target TanStack bootstrap and generated Cloud integration modules when importing code, because they own deployment and authentication.
+- Keep GPU avatar inference external; portrait deformation is only a local preview, because Worker hosting cannot execute CUDA models.
+- Store explicit character memories in Cloud with owner-scoped policies; never treat face-expression estimates as established emotions.
+- Keep Gemini calls behind the server connector and bundled browser models in workers, because provider credentials must stay private and model loading must not block the UI.
+- Publish MediaPipe WASM and portrait media via asset pointers, because runtime files exceed repository limits.

@@ -115,7 +115,7 @@ function Chat() {
           <Link
             to="/"
             aria-label="Volver"
-            className="flex min-h-[40px] min-w-[40px] items-center justify-center rounded-full text-foreground hover:bg-secondary/60 md:hidden"
+            className="flex min-h-[40px] min-w-[40px] items-center justify-center rounded-full text-foreground hover:bg-secondary/60"
           >
             <ArrowLeft className="h-5 w-5" />
           </Link>
@@ -162,7 +162,7 @@ function Chat() {
           >
             <Link to="/call">
               <Video className="h-4 w-4 text-foreground" />
-              <span>Llamar</span>
+              <span>Videollamada</span>
             </Link>
           </Button>
           <Link

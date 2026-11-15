@@ -1,5 +1,6 @@
 // AI engine: Google AI Studio cloud models (fast & smart) + local browser ONNX models in a Web Worker.
 import { useSyncExternalStore } from "react";
+import { memoryPrompt, readMemories } from "./memories";
 import { getProfile, type ModelId, type Msg, type Profile } from "./store";
 
 export type ModelOption = {
@@ -400,6 +401,7 @@ export function systemPrompt(p: Profile, callMode = false, visualContext?: strin
   const context = es
     ? " Ajusta la emoción al contexto de la conversación; escucha con atención y sé natural como una persona real. Si estás haciendo una entrevista laboral o de negocios, evalúa con rigor, haz preguntas relevantes una a una y da retroalimentación útil."
     : " Match emotion naturally to context; listen attentively like a real person. In job or business interviews, ask sharp follow-up questions one at a time and give constructive feedback.";
+  const savedMemory = memoryPrompt(p.characterId);
   const visualNote = visualContext?.trim()
     ? es
       ? ` Contexto visual actual de la cámara del usuario: ${visualContext.trim()} Tenlo en cuenta con naturalidad como haría una persona en videollamada (sin mencionar cámaras ni sensores).`
@@ -408,12 +410,12 @@ export function systemPrompt(p: Profile, callMode = false, visualContext?: strin
   const voiceGender = p.gender === "male" ? "masculina" : "femenina";
   if (callMode) {
     return es
-      ? `Eres ${p.name}. Personalidad: ${p.personality}. Historia: ${p.backstory}. Estilo: ${p.style}. Estás en una videollamada en vivo (voz ${voiceGender}). Responde siempre en español natural en primera persona. Empieza SIEMPRE tu respuesta con una etiqueta emocional: [neutral], [feliz], [riendo], [enojado], [sorprendido], [triste] o [miedo]. Luego escribe 1 o 2 frases breves y directas (menos de 24 palabras). ${context}${visualNote}`
-      : `You are ${p.name}. Personality: ${p.personality}. Backstory: ${p.backstory}. Style: ${p.style}. You are on a live video call. Speak natural English in first person. ALWAYS start your reply with one emotion tag: [neutral], [happy], [laugh], [angry], [surprised], [sad], or [fear]. Then write 1-2 brief direct sentences (under 24 words). ${context}${visualNote}`;
+      ? `Eres ${p.name}. Personalidad: ${p.personality}. Historia: ${p.backstory}. Estilo: ${p.style}. Estás en una videollamada en vivo (voz ${voiceGender}). Responde siempre en español natural en primera persona. Empieza SIEMPRE tu respuesta con una etiqueta emocional: [neutral], [feliz], [riendo], [enojado], [sorprendido], [triste] o [miedo]. Luego escribe 1 o 2 frases breves y directas (menos de 24 palabras). ${context}${visualNote}${savedMemory}`
+      : `You are ${p.name}. Personality: ${p.personality}. Backstory: ${p.backstory}. Style: ${p.style}. You are on a live video call. Speak natural English in first person. ALWAYS start your reply with one emotion tag: [neutral], [happy], [laugh], [angry], [surprised], [sad], or [fear]. Then write 1-2 brief direct sentences (under 24 words). ${context}${visualNote}${savedMemory}`;
   }
   return es
-    ? `Eres ${p.name}. Personalidad: ${p.personality}. Historia: ${p.backstory}. Estilo: ${p.style}. Hablas siempre en español en primera persona con total naturalidad. Empieza SIEMPRE tu respuesta con una etiqueta entre corchetes ([neutral], [feliz], [riendo], [enojado], [sorprendido], [triste] o [miedo]) y responde de forma concisa en 1 a 2 frases humanas. Si el usuario te manda un GIF o quieres reaccionar visualmente con naturalidad, puedes añadir opcionalmente al final exactamente una etiqueta de GIF de esta lista: [gif:saludo], [gif:aplauso], [gif:risa], [gif:genial], [gif:sorpresa], [gif:cafe], [gif:pensando] o [gif:animo]. ${context}${visualNote}`
-    : `You are ${p.name}. Personality: ${p.personality}. Backstory: ${p.backstory}. Style: ${p.style}. Always speak English in first person naturally. ALWAYS start with one bracketed emotion tag ([neutral], [happy], [laugh], [angry], [surprised], [sad], or [fear]) followed by 1-2 concise human sentences. Optionally, when reacting to a GIF or fitting moment, you may append one GIF tag: [gif:saludo], [gif:aplauso], [gif:risa], [gif:genial], [gif:sorpresa], [gif:cafe], [gif:pensando], or [gif:animo]. ${context}${visualNote}`;
+    ? `Eres ${p.name}. Personalidad: ${p.personality}. Historia: ${p.backstory}. Estilo: ${p.style}. Hablas siempre en español en primera persona con total naturalidad. Empieza SIEMPRE tu respuesta con una etiqueta entre corchetes ([neutral], [feliz], [riendo], [enojado], [sorprendido], [triste] o [miedo]) y responde de forma concisa en 1 a 2 frases humanas. Si el usuario te manda un GIF o quieres reaccionar visualmente con naturalidad, puedes añadir opcionalmente al final exactamente una etiqueta de GIF de esta lista: [gif:saludo], [gif:aplauso], [gif:risa], [gif:genial], [gif:sorpresa], [gif:cafe], [gif:pensando] o [gif:animo]. ${context}${visualNote}${savedMemory}`
+    : `You are ${p.name}. Personality: ${p.personality}. Backstory: ${p.backstory}. Style: ${p.style}. Always speak English in first person naturally. ALWAYS start with one bracketed emotion tag ([neutral], [happy], [laugh], [angry], [surprised], [sad], or [fear]) followed by 1-2 concise human sentences. Optionally, when reacting to a GIF or fitting moment, you may append one GIF tag: [gif:saludo], [gif:aplauso], [gif:risa], [gif:genial], [gif:sorpresa], [gif:cafe], [gif:pensando], or [gif:animo]. ${context}${visualNote}${savedMemory}`;
 }
 
 function serializeHistory(history: Msg[]): Array<{ role: "user" | "assistant"; content: string }> {
@@ -518,6 +520,7 @@ export async function replyWithEmotion(
   onToken?: (t: string) => void,
   opts?: { callMode?: boolean; visualContext?: string | undefined },
 ): Promise<{ text: string; emotion: AvatarEmotion; gifTag?: string | undefined }> {
+  if (p.characterId) { try { await readMemories(p.characterId); } catch { /* explicit memory UI handles retrieval errors */ } }
   const callMode = !!opts?.callMode;
   const visualContext = opts?.visualContext;
   let model = getModelOption(p.modelId);
@@ -530,7 +533,7 @@ export async function replyWithEmotion(
 
   // Only block waiting on heavy local weights when user explicitly turned on localOnly mode, or if almost done loading.
   if (state.status !== "ready" || state.modelId !== model.id) {
-    if (p.localOnly) {
+    if (!model.cloud) {
       await loadModel(model.id);
     } else {
       const almostReady =

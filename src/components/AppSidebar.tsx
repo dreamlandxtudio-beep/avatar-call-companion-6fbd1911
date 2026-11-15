@@ -143,6 +143,7 @@ export function AppSidebar({ current }: { current: "discover" | "chat" | "profil
       </div>
 
       <div className="mt-4 border-t border-sidebar-border pt-3">
+        <Button asChild variant="ghost" className="w-full justify-start"><Link to="/account">Mi cuenta</Link></Button>
         <Button
           asChild
           variant={current === "profile" ? "secondary" : "ghost"}

@@ -1009,6 +1009,7 @@ export function AnimatedAvatar({
 
   useEffect(() => {
     let cancel = false;
+    setWebglFailed(false);
     setFace(null);
     setRigReady(false);
     const i = new Image();
@@ -1244,7 +1245,7 @@ export function AnimatedAvatar({
     let raf = 0;
     const draw = (now: number) => {
       raf = requestAnimationFrame(draw);
-      if (contextLost) return;
+      if (contextLost || document.hidden) return;
 
       const isActive = activeRef.current;
       const visemes = isActive ? audioVisemes() : { level: 0, open: 0, wide: 0, round: 0 };
@@ -1330,12 +1331,12 @@ export function AnimatedAvatar({
       gl.uniform1f(uLoc.uEyeWide, frame.eyeWide);
       gl.uniform1f(uLoc.uNoseFlare, frame.noseFlare);
 
-      gl.uniform2f(uLoc.uHeadRot, frame.headYaw, frame.headPitch);
-      gl.uniform1f(uLoc.uHeadRoll, frame.headRoll);
-      gl.uniform2f(uLoc.uHeadTranslate, frame.headTx, frame.headTy);
-      gl.uniform1f(uLoc.uTorsoBreath, frame.torsoBreath);
-      gl.uniform2f(uLoc.uHand0Delta, frame.handShiftX, frame.handShiftY);
-      gl.uniform2f(uLoc.uHand1Delta, -frame.handShiftX * 0.85, frame.handShiftY * 0.85);
+      gl.uniform2f(uLoc.uHeadRot, frame.headYaw * 0.12, frame.headPitch * 0.12);
+      gl.uniform1f(uLoc.uHeadRoll, frame.headRoll * 0.2);
+      gl.uniform2f(uLoc.uHeadTranslate, 0, 0);
+      gl.uniform1f(uLoc.uTorsoBreath, 0);
+      gl.uniform2f(uLoc.uHand0Delta, 0, 0);
+      gl.uniform2f(uLoc.uHand1Delta, 0, 0);
       gl.uniform2f(uLoc.uHairDelta, frame.hairShiftX, frame.hairShiftY);
 
       gl.uniform2f(uLoc.uREyeCenter, face.rightEyeCenter[0], face.rightEyeCenter[1]);

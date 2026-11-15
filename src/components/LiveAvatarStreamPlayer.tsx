@@ -30,21 +30,8 @@ export function LiveAvatarStreamPlayer({
       setDetail("Configura una URL válida en Personalizar.");
       return;
     }
-    setStatus("checking");
-    try {
-      const res = await fetch(`/api/liveavatar/status?url=${encodeURIComponent(safeUrl)}`);
-      const data = (await res.json()) as { ok?: boolean; error?: string };
-      if (data.ok) {
-        setStatus("connected");
-        setDetail("Servidor externo accesible en tu equipo con GPU.");
-      } else {
-        setStatus("offline");
-        setDetail(data.error || "No responde el servidor externo.");
-      }
-    } catch {
-      setStatus("offline");
-      setDetail("No se pudo comprobar el estado del servidor.");
-    }
+    setStatus("offline");
+    setDetail("Falta conectar una sesión de vídeo del servidor GPU; una URL de estudio no genera vídeo en esta llamada.");
   };
 
   useEffect(() => {
@@ -68,12 +55,12 @@ export function LiveAvatarStreamPlayer({
         </p>
         <p className="text-xs text-muted-foreground">
           {detail ||
-            "Usa nuestro motor 3D GPU integrado para animar ojos, cabello, cuello y manos al instante."}
+            "El retrato es estático mientras no haya una sesión de vídeo."}
         </p>
         <div className="flex flex-wrap justify-center gap-2">
           <Button onClick={() => setProfile({ avatarEngine: "mediapipe-mesh" })}>
             <Sparkles />
-            Usar Avatar 3D GPU
+            Usar animación local
           </Button>
           <Button variant="secondary" onClick={probe}>
             <RefreshCw />

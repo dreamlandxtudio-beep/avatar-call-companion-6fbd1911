@@ -10,13 +10,25 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as AccountRouteImport } from './routes/account'
 import { Route as CallRouteImport } from './routes/call'
 import { Route as ChatRouteImport } from './routes/chat'
 import { Route as ProfileRouteImport } from './routes/profile'
+import { Route as ApiAvatarGenderRouteImport } from './routes/api/avatar-gender'
+import { Route as ApiChatRouteImport } from './routes/api/chat'
+import { Route as ApiFaceLandmarksRouteImport } from './routes/api/face-landmarks'
+import { Route as ApiTranscribeRouteImport } from './routes/api/transcribe'
+import { Route as ApiTtsRouteImport } from './routes/api/tts'
+import { Route as ApiLiveavatarStatusRouteImport } from './routes/api/liveavatar/status'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AccountRoute = AccountRouteImport.update({
+  id: '/account',
+  path: '/account',
   getParentRoute: () => rootRouteImport,
 } as any)
 const CallRoute = CallRouteImport.update({
@@ -34,39 +46,131 @@ const ProfileRoute = ProfileRouteImport.update({
   path: '/profile',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiAvatarGenderRoute = ApiAvatarGenderRouteImport.update({
+  id: '/api/avatar-gender',
+  path: '/api/avatar-gender',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiChatRoute = ApiChatRouteImport.update({
+  id: '/api/chat',
+  path: '/api/chat',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiFaceLandmarksRoute = ApiFaceLandmarksRouteImport.update({
+  id: '/api/face-landmarks',
+  path: '/api/face-landmarks',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiTranscribeRoute = ApiTranscribeRouteImport.update({
+  id: '/api/transcribe',
+  path: '/api/transcribe',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiTtsRoute = ApiTtsRouteImport.update({
+  id: '/api/tts',
+  path: '/api/tts',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiLiveavatarStatusRoute = ApiLiveavatarStatusRouteImport.update({
+  id: '/api/liveavatar/status',
+  path: '/api/liveavatar/status',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/account': typeof AccountRoute
   '/call': typeof CallRoute
   '/chat': typeof ChatRoute
   '/profile': typeof ProfileRoute
+  '/api/avatar-gender': typeof ApiAvatarGenderRoute
+  '/api/chat': typeof ApiChatRoute
+  '/api/face-landmarks': typeof ApiFaceLandmarksRoute
+  '/api/transcribe': typeof ApiTranscribeRoute
+  '/api/tts': typeof ApiTtsRoute
+  '/api/liveavatar/status': typeof ApiLiveavatarStatusRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/account': typeof AccountRoute
   '/call': typeof CallRoute
   '/chat': typeof ChatRoute
   '/profile': typeof ProfileRoute
+  '/api/avatar-gender': typeof ApiAvatarGenderRoute
+  '/api/chat': typeof ApiChatRoute
+  '/api/face-landmarks': typeof ApiFaceLandmarksRoute
+  '/api/transcribe': typeof ApiTranscribeRoute
+  '/api/tts': typeof ApiTtsRoute
+  '/api/liveavatar/status': typeof ApiLiveavatarStatusRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/account': typeof AccountRoute
   '/call': typeof CallRoute
   '/chat': typeof ChatRoute
   '/profile': typeof ProfileRoute
+  '/api/avatar-gender': typeof ApiAvatarGenderRoute
+  '/api/chat': typeof ApiChatRoute
+  '/api/face-landmarks': typeof ApiFaceLandmarksRoute
+  '/api/transcribe': typeof ApiTranscribeRoute
+  '/api/tts': typeof ApiTtsRoute
+  '/api/liveavatar/status': typeof ApiLiveavatarStatusRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/call' | '/chat' | '/profile'
+  fullPaths:
+    | '/'
+    | '/account'
+    | '/call'
+    | '/chat'
+    | '/profile'
+    | '/api/avatar-gender'
+    | '/api/chat'
+    | '/api/face-landmarks'
+    | '/api/transcribe'
+    | '/api/tts'
+    | '/api/liveavatar/status'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/call' | '/chat' | '/profile'
-  id: '__root__' | '/' | '/call' | '/chat' | '/profile'
+  to:
+    | '/'
+    | '/account'
+    | '/call'
+    | '/chat'
+    | '/profile'
+    | '/api/avatar-gender'
+    | '/api/chat'
+    | '/api/face-landmarks'
+    | '/api/transcribe'
+    | '/api/tts'
+    | '/api/liveavatar/status'
+  id:
+    | '__root__'
+    | '/'
+    | '/account'
+    | '/call'
+    | '/chat'
+    | '/profile'
+    | '/api/avatar-gender'
+    | '/api/chat'
+    | '/api/face-landmarks'
+    | '/api/transcribe'
+    | '/api/tts'
+    | '/api/liveavatar/status'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AccountRoute: typeof AccountRoute
   CallRoute: typeof CallRoute
   ChatRoute: typeof ChatRoute
   ProfileRoute: typeof ProfileRoute
+  ApiAvatarGenderRoute: typeof ApiAvatarGenderRoute
+  ApiChatRoute: typeof ApiChatRoute
+  ApiFaceLandmarksRoute: typeof ApiFaceLandmarksRoute
+  ApiTranscribeRoute: typeof ApiTranscribeRoute
+  ApiTtsRoute: typeof ApiTtsRoute
+  ApiLiveavatarStatusRoute: typeof ApiLiveavatarStatusRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -76,6 +180,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/account': {
+      id: '/account'
+      path: '/account'
+      fullPath: '/account'
+      preLoaderRoute: typeof AccountRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/call': {
@@ -99,14 +210,63 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ProfileRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/avatar-gender': {
+      id: '/api/avatar-gender'
+      path: '/api/avatar-gender'
+      fullPath: '/api/avatar-gender'
+      preLoaderRoute: typeof ApiAvatarGenderRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/chat': {
+      id: '/api/chat'
+      path: '/api/chat'
+      fullPath: '/api/chat'
+      preLoaderRoute: typeof ApiChatRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/face-landmarks': {
+      id: '/api/face-landmarks'
+      path: '/api/face-landmarks'
+      fullPath: '/api/face-landmarks'
+      preLoaderRoute: typeof ApiFaceLandmarksRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/transcribe': {
+      id: '/api/transcribe'
+      path: '/api/transcribe'
+      fullPath: '/api/transcribe'
+      preLoaderRoute: typeof ApiTranscribeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/tts': {
+      id: '/api/tts'
+      path: '/api/tts'
+      fullPath: '/api/tts'
+      preLoaderRoute: typeof ApiTtsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/liveavatar/status': {
+      id: '/api/liveavatar/status'
+      path: '/api/liveavatar/status'
+      fullPath: '/api/liveavatar/status'
+      preLoaderRoute: typeof ApiLiveavatarStatusRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AccountRoute: AccountRoute,
   CallRoute: CallRoute,
   ChatRoute: ChatRoute,
   ProfileRoute: ProfileRoute,
+  ApiAvatarGenderRoute: ApiAvatarGenderRoute,
+  ApiChatRoute: ApiChatRoute,
+  ApiFaceLandmarksRoute: ApiFaceLandmarksRoute,
+  ApiTranscribeRoute: ApiTranscribeRoute,
+  ApiTtsRoute: ApiTtsRoute,
+  ApiLiveavatarStatusRoute: ApiLiveavatarStatusRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

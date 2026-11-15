@@ -11,16 +11,18 @@ let client: GoogleGenAI | null = null;
 let betaClient: GoogleGenAI | null = null;
 
 function getClient() {
-  const apiKey = process.env["GEMINI_API_KEY"]?.trim();
+  const apiKey = process.env["UDC_GOOGLE_AI_STUDIO_API_KEY"]?.trim();
   if (!apiKey) {
-    throw new Error("Falta configurar GEMINI_API_KEY en Settings > Secrets.");
+    throw new Error("La conexión de Google AI Studio no está configurada.");
   }
   if (!client) {
     client = new GoogleGenAI({
-      apiKey,
+      apiKey: "connector-managed",
       httpOptions: {
+        baseUrl: "https://connector-gateway.lovable.dev/udc_google_ai_studio",
         headers: {
-          "User-Agent": "aistudio-build",
+          "Authorization": `Bearer ${process.env["LOVABLE_API_KEY"] ?? ""}`,
+          "X-Connection-Api-Key": apiKey,
         },
       },
     });
@@ -29,17 +31,19 @@ function getClient() {
 }
 
 function getBetaClient() {
-  const apiKey = process.env["GEMINI_API_KEY"]?.trim();
+  const apiKey = process.env["UDC_GOOGLE_AI_STUDIO_API_KEY"]?.trim();
   if (!apiKey) {
-    throw new Error("Falta configurar GEMINI_API_KEY en Settings > Secrets.");
+    throw new Error("La conexión de Google AI Studio no está configurada.");
   }
   if (!betaClient) {
     betaClient = new GoogleGenAI({
-      apiKey,
+      apiKey: "connector-managed",
       httpOptions: {
+        baseUrl: "https://connector-gateway.lovable.dev/udc_google_ai_studio",
         apiVersion: "v1beta",
         headers: {
-          "User-Agent": "aistudio-build",
+          "Authorization": `Bearer ${process.env["LOVABLE_API_KEY"] ?? ""}`,
+          "X-Connection-Api-Key": apiKey,
         },
       },
     });
