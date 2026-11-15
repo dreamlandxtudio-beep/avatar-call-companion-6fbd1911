@@ -1,4 +1,9 @@
 # Roadmap
+- [ ] Independent eye rendering, stronger expressions and subtle camera mirroring.
+- [ ] Camera mirror test page with mouth, eyelid, brow, gaze and head controls.
+- [ ] Device download management and reload reuse for local AI and voice; verify actual cached inference.
+- [ ] Rounded romantic YUME discovery/chat styling and adult realistic/anime character defaults.
+- [ ] Research realistic/anime engines and public-avatar licensing; document integration limitations.
 - [x] Default device speech without a shared AI voice quota; verified no TTS requests and honest unavailable-voice errors.
 - [ ] Audible system speech verification blocked by the test browser having no installed system voices; needs playback on the user's device.
 - [x] Keep local portrait animation visible in external-studio mode and bound rendering cost on integrated GPUs/phones; verified changing frames and mobile layout.
