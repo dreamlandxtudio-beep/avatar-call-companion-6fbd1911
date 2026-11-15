@@ -1,5 +1,6 @@
 // 100% local client-side facial expression, ocular saccade, blink, 3D head perspective & lip-sync kinematics engine.
 import type { AvatarEmotion } from "./ai";
+import { createObservedReaction, stepObservedReaction, type ObservedReaction } from "./observed-reaction";
 import { blinkClosure, mouthMotion } from "./avatar-motion";
 import type { UserFaceObservation } from "./userCamera";
 import type { AudioVisemes } from "./voice";
@@ -33,6 +34,7 @@ export type ExpressionFrame = {
 };
 
 export type ExpressionEngineState = {
+  reaction: ObservedReaction;
   lastNow: number;
   nextBlinkAt: number;
   blinkProgress: number;
@@ -68,6 +70,7 @@ export type ExpressionEngineState = {
 
 export function createExpressionEngine(now = performance.now()): ExpressionEngineState {
   return {
+    reaction: createObservedReaction(),
     lastNow: now,
     nextBlinkAt: now + 380,
     blinkProgress: 1,
@@ -125,6 +128,7 @@ export function stepExpressionEngine(
   const { active, listening, emotion, visemes, userFace } = opts;
   const hasUserFace = !!userFace?.detected && now - userFace.updatedAt < 1000;
   const directMirror = !!opts.mirrorMode && hasUserFace;
+  const observedSmile = directMirror ? 0 : stepObservedReaction(st.reaction, now, userFace);
 
   // 1) Distinct, unmistakable human blink cadence (double-blink ~22% chance)
   if (now >= st.nextBlinkAt) {
@@ -148,34 +152,34 @@ export function stepExpressionEngine(
   // 2) Authentic, crisp extraocular saccades & corneal scanning (never chases mouse cursor)
   if (now >= st.nextSaccadeAt) {
     if (active) {
-      const thinkGlance = Math.random() < 0.36;
+      const thinkGlance = Math.random() < 0.24;
       st.targetGazeX = thinkGlance
         ? (Math.random() < 0.5 ? -1 : 1) * (0.68 + Math.random() * 0.34)
-        : (Math.random() - 0.5) * 1.12;
-      st.targetGazeY = thinkGlance ? 0.18 + Math.random() * 0.28 : (Math.random() - 0.5) * 0.56;
+        : (Math.random() - 0.5) * 0.18;
+      st.targetGazeY = thinkGlance ? 0.18 + Math.random() * 0.28 : (Math.random() - 0.5) * 0.12;
       st.nextSaccadeAt =
-        now + (thinkGlance ? 440 + Math.random() * 420 : 540 + Math.random() * 820);
+        now + (thinkGlance ? 500 + Math.random() * 250 : 1500 + Math.random() * 1600);
     } else if (listening) {
-      st.targetGazeX = (Math.random() - 0.5) * 1.04;
-      st.targetGazeY = (Math.random() - 0.5) * 0.52;
+      st.targetGazeX = (Math.random() - 0.5) * 0.14;
+      st.targetGazeY = (Math.random() - 0.5) * 0.10;
       st.nextSaccadeAt = now + 620 + Math.random() * 940;
     } else {
-      st.targetGazeX = (Math.random() - 0.5) * 1.15;
-      st.targetGazeY = (Math.random() - 0.5) * 0.58;
+      st.targetGazeX = (Math.random() - 0.5) * 0.20;
+      st.targetGazeY = (Math.random() - 0.5) * 0.12;
       st.nextSaccadeAt = now + 760 + Math.random() * 1100;
     }
   }
 
-  const microDriftX = Math.sin(t * 1.45) * 0.12 * mScale;
-  const microDriftY = Math.cos(t * 1.05) * 0.07 * mScale;
+  const microDriftX = Math.sin(t * 1.45) * 0.025 * mScale;
+  const microDriftY = Math.cos(t * 1.05) * 0.015 * mScale;
 
   // Subconscious gaze mirroring when user turns/looks toward a side
-  const mirrorGazeX = hasUserFace ? userFace.gazeX * (directMirror ? 1 : 0.55) : 0;
-  const mirrorGazeY = hasUserFace ? userFace.gazeY * (directMirror ? 1 : 0.55) : 0;
+  const mirrorGazeX = directMirror ? userFace.gazeX : 0;
+  const mirrorGazeY = directMirror ? userFace.gazeY : 0;
 
   const targetGx = Math.max(-1.05, Math.min(1.05, (directMirror ? 0 : st.targetGazeX + microDriftX) + mirrorGazeX));
   const targetGy = Math.max(-0.68, Math.min(0.68, (directMirror ? 0 : st.targetGazeY + microDriftY) + mirrorGazeY));
-  if (hasUserFace) blink = Math.max(blink * (directMirror ? 0 : 1), userFace.blink ?? 0);
+  if (directMirror) blink = Math.max(blink * (directMirror ? 0 : 1), userFace.blink ?? 0);
 
   const gazeAlpha = 1 - Math.exp(-dt * 28);
   st.gazeX += (targetGx - st.gazeX) * gazeAlpha;
@@ -252,7 +256,11 @@ export function stepExpressionEngine(
   }
 
   // Subconscious empathetic facial mirroring from user's camera expression
-  if (hasUserFace) {
+  emSmile += observedSmile;
+  emCheek += observedSmile * 0.85;
+  emSquint += observedSmile * 0.4;
+  emOpen = Math.max(emOpen, observedSmile * 0.16);
+  if (directMirror) {
     const mirrorWeight = directMirror ? 1 : active ? 0.5 : 0.75;
     if (emotion !== "angry" && emotion !== "sad") {
       emSmile += userFace.smile * 0.8 * mirrorWeight;
@@ -338,8 +346,8 @@ export function stepExpressionEngine(
   const speechNod = active ? Math.sin(t * 3.2) * st.browBeat * 0.38 : 0;
 
   // Subconscious side-turn mirroring: if user turns head left/right, avatar subtly follows toward that side
-  const mirrorYaw = hasUserFace ? userFace.headYaw * (directMirror ? 1 : 0.5) : 0;
-  const mirrorPitch = hasUserFace ? userFace.headPitch * (directMirror ? 1 : 0.4) : 0;
+  const mirrorYaw = directMirror ? userFace.headYaw : 0;
+  const mirrorPitch = directMirror ? userFace.headPitch : 0;
 
   const targetYaw = directMirror ? mirrorYaw * mScale :
     (Math.sin(t * 0.68) * (active ? 0.62 : 0.42) +
@@ -363,7 +371,7 @@ export function stepExpressionEngine(
       Math.cos(t * 0.34) * 0.022 +
       (listening ? 0.022 : 0) +
       (emotion === "surprised" ? 0.025 * eb : 0) +
-      (hasUserFace ? userFace.headYaw * 0.025 : 0)) *
+      0) *
     mScale;
 
   const headAlpha = 1 - Math.exp(-dt * 3.8);
