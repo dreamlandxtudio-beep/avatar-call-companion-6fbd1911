@@ -513,10 +513,10 @@ async function getVisionModels() {
     return { landmarker: lm, detector: fd, handLandmarker: hl, segmenter: seg };
   }
   installTfliteConsoleFilter();
-  const { FaceDetector, FaceLandmarker, FilesetResolver, HandLandmarker, ImageSegmenter } =
+  const { FaceDetector, FaceLandmarker, HandLandmarker, ImageSegmenter } =
     await import("@mediapipe/tasks-vision");
 
-  const initFromBase = async (wasmBase: string) => {
+  const initFromBase = async () => {
     const fs = await Promise.resolve(visionFileset);
     const [landmarker, detector, handLandmarker, segmenter] = await Promise.all([
       FaceLandmarker.createFromOptions(fs, {
@@ -566,10 +566,7 @@ async function getVisionModels() {
   };
 
   if (!visionPromise) {
-    visionPromise = initFromBase("/mediapipe-wasm").catch((err) => {
-      console.warn("Local mediapipe wasm failed, falling back to CDN 1.2.3:", err);
-      return initFromBase("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.32/wasm");
-    });
+    visionPromise = initFromBase();
   }
   const res = await visionPromise;
   lm = res.landmarker;

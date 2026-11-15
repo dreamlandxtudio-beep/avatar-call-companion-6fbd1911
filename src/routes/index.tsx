@@ -41,7 +41,7 @@ export const Route = createFileRoute("/")({
       {
         property: "og:description",
         content:
-          "Elige un entrevistador realista, personaje o sube una foto para animarla con fidelidad fotográfica y cero consumo de datos en modo local.",
+          "Elige un entrevistador realista, personaje o sube una foto para animarla con voz, personalidad y memoria propia.",
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
@@ -84,7 +84,7 @@ function Home() {
             <BrandLogo />
           </Link>
           <p className="hidden text-sm text-muted-foreground md:block">
-            Estudio facial local · entrevistas y personajes
+            Tus personajes
           </p>
           <div className="flex items-center gap-2">
             <Button asChild size="sm" className="whitespace-nowrap shrink-0">
@@ -103,7 +103,7 @@ function Home() {
 
         <section
           aria-label="Estudio activo"
-          className="mt-6 grid items-stretch gap-6 rounded-2xl border border-border bg-card p-5 lg:grid-cols-[1.05fr_0.95fr] lg:p-6"
+          className="studio-feature"
         >
           <div className="flex flex-col justify-between gap-5">
             <div>
@@ -173,7 +173,7 @@ function Home() {
             </div>
           </div>
 
-          <div className="relative h-[280px] w-full overflow-hidden rounded-xl border border-border bg-[#0a0a0a] sm:h-[340px] lg:h-[360px]">
+          <div className="studio-photo">
             <AnimatedAvatar
               src={featured.avatar}
               name={featured.name}
@@ -214,7 +214,7 @@ function Home() {
             <div>
               <h2 className="text-xl font-semibold text-foreground">Reparto disponible</h2>
               <p className="mt-0.5 text-xs text-muted-foreground">
-                Selecciona cualquier perfil para cargarlo en escena o iniciar sesión
+                
               </p>
             </div>
             <label className="flex h-9 w-full items-center gap-2 rounded-lg border border-border bg-card px-3 sm:w-72">
@@ -268,7 +268,7 @@ function Home() {
                   <button
                     type="button"
                     onClick={() => selectCharacter(character.id)}
-                    className="relative h-20 w-16 shrink-0 overflow-hidden rounded-lg border border-border bg-[#0a0a0a]"
+                    className="relative h-20 w-16 shrink-0 overflow-hidden rounded-lg border border-border bg-background"
                     aria-label={`Seleccionar a ${character.name}`}
                   >
                     <img
