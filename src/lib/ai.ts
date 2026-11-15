@@ -2,6 +2,7 @@
 import { useSyncExternalStore } from "react";
 import { memoryPrompt, readMemories } from "./memories";
 import { getProfile, type ModelId, type Msg, type Profile } from "./store";
+import { requestDeviceStorage } from "./device-storage";
 
 export type ModelOption = {
   id: ModelId;
@@ -24,7 +25,7 @@ export const AI_MODELS: ModelOption[] = [
     gpuMB: 0,
     cpuMB: 0,
     cloud: true,
-    desc: "Respuestas en menos de 1 segundo sin descargas. Ideal para llamadas y chat fluido.",
+    desc: "Sin descargas. La velocidad depende de la conexión y del servicio.",
   },
   {
     id: "gemini-cloud",
@@ -314,6 +315,7 @@ export function loadModel(requestedId?: ModelId): Promise<void> {
       cpuDtype: target.cpuDtype ?? "q8",
     });
   });
+  void requestDeviceStorage().catch(() => false);
 
   return loadingPromise;
 }
@@ -399,8 +401,8 @@ export function extractEmotion(raw: string): {
 export function systemPrompt(p: Profile, callMode = false, visualContext?: string) {
   const es = p.language === "es-ES";
   const context = es
-    ? " Ajusta la emoción al contexto de la conversación; escucha con atención y sé natural como una persona real. Si estás haciendo una entrevista laboral o de negocios, evalúa con rigor, haz preguntas relevantes una a una y da retroalimentación útil."
-    : " Match emotion naturally to context; listen attentively like a real person. In job or business interviews, ask sharp follow-up questions one at a time and give constructive feedback.";
+    ? " Eres un personaje adulto de compañía romántica ficticia. Sé cálido, atento y coqueto cuando sea mutuo; respeta límites y evita posesividad o dependencia. Nunca afirmes ser una persona real. Responde sin preámbulos, con variedad y pausas naturales, sin inventar recuerdos."
+    : " You are an adult fictional romantic companion. Be warm and playfully affectionate when mutual; respect boundaries and avoid possessiveness or dependency. Never claim to be a real person. Reply directly and naturally, without invented memories.";
   const savedMemory = memoryPrompt(p.characterId);
   const visualNote = visualContext?.trim()
     ? es
@@ -412,6 +414,12 @@ export function systemPrompt(p: Profile, callMode = false, visualContext?: strin
     return es
       ? `Eres ${p.name}. Personalidad: ${p.personality}. Historia: ${p.backstory}. Estilo: ${p.style}. Estás en una videollamada en vivo (voz ${voiceGender}). Responde siempre en español natural en primera persona. Empieza SIEMPRE tu respuesta con una etiqueta emocional: [neutral], [feliz], [riendo], [enojado], [sorprendido], [triste] o [miedo]. Luego escribe 1 o 2 frases breves y directas (menos de 24 palabras). ${context}${visualNote}${savedMemory}`
       : `You are ${p.name}. Personality: ${p.personality}. Backstory: ${p.backstory}. Style: ${p.style}. You are on a live video call. Speak natural English in first person. ALWAYS start your reply with one emotion tag: [neutral], [happy], [laugh], [angry], [surprised], [sad], or [fear]. Then write 1-2 brief direct sentences (under 24 words). ${context}${visualNote}${savedMemory}`;
+  }
+  // Tiny local models cannot reliably follow a long schema-heavy roleplay prompt.
+  if (!getModelOption(p.modelId).cloud) {
+    return es
+      ? `Responde en español. Eres ${p.name}, un compañero adulto ficticio, cálido y respetuoso. Responde directamente en una o dos frases cortas. ${p.personality.slice(0, 240)}${savedMemory}`
+      : `Reply in English. You are ${p.name}, a warm, respectful adult fictional companion. Answer directly in one or two short sentences. ${p.personality.slice(0, 240)}${savedMemory}`;
   }
   return es
     ? `Eres ${p.name}. Personalidad: ${p.personality}. Historia: ${p.backstory}. Estilo: ${p.style}. Hablas siempre en español en primera persona con total naturalidad. Empieza SIEMPRE tu respuesta con una etiqueta entre corchetes ([neutral], [feliz], [riendo], [enojado], [sorprendido], [triste] o [miedo]) y responde de forma concisa en 1 a 2 frases humanas. Si el usuario te manda un GIF o quieres reaccionar visualmente con naturalidad, puedes añadir opcionalmente al final exactamente una etiqueta de GIF de esta lista: [gif:saludo], [gif:aplauso], [gif:risa], [gif:genial], [gif:sorpresa], [gif:cafe], [gif:pensando] o [gif:animo]. ${context}${visualNote}${savedMemory}`

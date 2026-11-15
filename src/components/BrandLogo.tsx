@@ -19,15 +19,15 @@ export function BrandLogo({ compact = false }: { compact?: boolean | undefined }
             y2="28"
             gradientUnits="userSpaceOnUse"
           >
-            <stop offset="0%" stopColor="#fafafa" />
-            <stop offset="55%" stopColor="#d4d4d4" />
-            <stop offset="100%" stopColor="#737373" />
+            <stop offset="0%" stopColor="var(--primary)" />
+            <stop offset="55%" stopColor="var(--foreground)" />
+            <stop offset="100%" stopColor="var(--primary)" />
           </linearGradient>
         </defs>
         {/* Crisp rounded aperture chat badge */}
         <path
           d="M16 3.2C8.93 3.2 3.2 8.48 3.2 15C3.2 18.28 4.66 21.24 7.02 23.38L5.35 28.25L10.82 25.92C12.44 26.48 14.18 26.8 16 26.8C23.07 26.8 28.8 21.52 28.8 15C28.8 8.48 23.07 3.2 16 3.2Z"
-          fill="#121212"
+          fill="var(--background)"
           stroke="url(#yume-mono)"
           strokeWidth="2.1"
           strokeLinejoin="round"
@@ -40,11 +40,11 @@ export function BrandLogo({ compact = false }: { compact?: boolean | undefined }
         {/* Crisp 4-point star */}
         <path
           d="M20.6 9.6L21.35 11.75L23.5 12.5L21.35 13.25L20.6 15.4L19.85 13.25L17.7 12.5L19.85 11.75L20.6 9.6Z"
-          fill="#ffffff"
+          fill="var(--foreground)"
         />
       </svg>
       {!compact && (
-        <span className="text-[22px] font-semibold tracking-tight text-foreground">yume</span>
+        <span className="text-[24px] font-black text-foreground">YUME</span>
       )}
     </span>
   );

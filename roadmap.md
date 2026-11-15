@@ -1,4 +1,10 @@
 # Roadmap
+- [x] Independent eye rendering, stronger expressions and subtle camera mirroring; eye tessellation holes repaired and signal tests pass.
+- [x] Camera mirror test page with mouth, eyelid, brow, gaze and head controls; verified face detection and camera track cleanup.
+- [x] Device download management and reload reuse for local AI; SmolLM2 inference verified and reload made no external weight requests.
+- [ ] Kokoro playback blocked by phonemizer reporting no available languages; errors surfaced, system voice remains default.
+- [x] Rounded romantic YUME discovery/chat styling and adult realistic/anime character defaults; mobile overflow checked.
+- [x] Research realistic/anime engines and public-avatar licensing; existing synthetic portraits retained instead of unlicensed public faces.
 - [x] Default device speech without a shared AI voice quota; verified no TTS requests and honest unavailable-voice errors.
 - [ ] Audible system speech verification blocked by the test browser having no installed system voices; needs playback on the user's device.
 - [x] Keep local portrait animation visible in external-studio mode and bound rendering cost on integrated GPUs/phones; verified changing frames and mobile layout.

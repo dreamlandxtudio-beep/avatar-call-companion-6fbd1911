@@ -13,6 +13,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as AccountRouteImport } from './routes/account'
 import { Route as CallRouteImport } from './routes/call'
 import { Route as ChatRouteImport } from './routes/chat'
+import { Route as MirrorRouteImport } from './routes/mirror'
 import { Route as ProfileRouteImport } from './routes/profile'
 import { Route as ApiAvatarGenderRouteImport } from './routes/api/avatar-gender'
 import { Route as ApiChatRouteImport } from './routes/api/chat'
@@ -39,6 +40,11 @@ const CallRoute = CallRouteImport.update({
 const ChatRoute = ChatRouteImport.update({
   id: '/chat',
   path: '/chat',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const MirrorRoute = MirrorRouteImport.update({
+  id: '/mirror',
+  path: '/mirror',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ProfileRoute = ProfileRouteImport.update({
@@ -82,6 +88,7 @@ export interface FileRoutesByFullPath {
   '/account': typeof AccountRoute
   '/call': typeof CallRoute
   '/chat': typeof ChatRoute
+  '/mirror': typeof MirrorRoute
   '/profile': typeof ProfileRoute
   '/api/avatar-gender': typeof ApiAvatarGenderRoute
   '/api/chat': typeof ApiChatRoute
@@ -95,6 +102,7 @@ export interface FileRoutesByTo {
   '/account': typeof AccountRoute
   '/call': typeof CallRoute
   '/chat': typeof ChatRoute
+  '/mirror': typeof MirrorRoute
   '/profile': typeof ProfileRoute
   '/api/avatar-gender': typeof ApiAvatarGenderRoute
   '/api/chat': typeof ApiChatRoute
@@ -109,6 +117,7 @@ export interface FileRoutesById {
   '/account': typeof AccountRoute
   '/call': typeof CallRoute
   '/chat': typeof ChatRoute
+  '/mirror': typeof MirrorRoute
   '/profile': typeof ProfileRoute
   '/api/avatar-gender': typeof ApiAvatarGenderRoute
   '/api/chat': typeof ApiChatRoute
@@ -124,6 +133,7 @@ export interface FileRouteTypes {
     | '/account'
     | '/call'
     | '/chat'
+    | '/mirror'
     | '/profile'
     | '/api/avatar-gender'
     | '/api/chat'
@@ -137,6 +147,7 @@ export interface FileRouteTypes {
     | '/account'
     | '/call'
     | '/chat'
+    | '/mirror'
     | '/profile'
     | '/api/avatar-gender'
     | '/api/chat'
@@ -150,6 +161,7 @@ export interface FileRouteTypes {
     | '/account'
     | '/call'
     | '/chat'
+    | '/mirror'
     | '/profile'
     | '/api/avatar-gender'
     | '/api/chat'
@@ -164,6 +176,7 @@ export interface RootRouteChildren {
   AccountRoute: typeof AccountRoute
   CallRoute: typeof CallRoute
   ChatRoute: typeof ChatRoute
+  MirrorRoute: typeof MirrorRoute
   ProfileRoute: typeof ProfileRoute
   ApiAvatarGenderRoute: typeof ApiAvatarGenderRoute
   ApiChatRoute: typeof ApiChatRoute
@@ -201,6 +214,13 @@ declare module '@tanstack/react-router' {
       path: '/chat'
       fullPath: '/chat'
       preLoaderRoute: typeof ChatRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/mirror': {
+      id: '/mirror'
+      path: '/mirror'
+      fullPath: '/mirror'
+      preLoaderRoute: typeof MirrorRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/profile': {
@@ -260,6 +280,7 @@ const rootRouteChildren: RootRouteChildren = {
   AccountRoute: AccountRoute,
   CallRoute: CallRoute,
   ChatRoute: ChatRoute,
+  MirrorRoute: MirrorRoute,
   ProfileRoute: ProfileRoute,
   ApiAvatarGenderRoute: ApiAvatarGenderRoute,
   ApiChatRoute: ApiChatRoute,

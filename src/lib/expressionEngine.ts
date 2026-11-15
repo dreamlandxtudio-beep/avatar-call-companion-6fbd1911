@@ -114,6 +114,7 @@ export function stepExpressionEngine(
     restMouthRatio: number;
     userFace?: UserFaceObservation | undefined;
     reducedMotion?: boolean | undefined;
+    mirrorMode?: boolean | undefined;
   },
 ): ExpressionFrame {
   const dt = Math.min(0.05, Math.max(0.004, (now - st.lastNow) * 0.001));
@@ -122,7 +123,8 @@ export function stepExpressionEngine(
   const mScale = opts.reducedMotion ? 0.15 : 1.0;
 
   const { active, listening, emotion, visemes, userFace } = opts;
-  const hasUserFace = !!userFace?.detected;
+  const hasUserFace = !!userFace?.detected && now - userFace.updatedAt < 1000;
+  const directMirror = !!opts.mirrorMode && hasUserFace;
 
   // 1) Distinct, unmistakable human blink cadence (double-blink ~22% chance)
   if (now >= st.nextBlinkAt) {
@@ -168,11 +170,12 @@ export function stepExpressionEngine(
   const microDriftY = Math.cos(t * 1.05) * 0.07 * mScale;
 
   // Subconscious gaze mirroring when user turns/looks toward a side
-  const mirrorGazeX = hasUserFace ? userFace.headYaw * 0.36 + userFace.gazeX * 0.18 : 0;
-  const mirrorGazeY = hasUserFace ? userFace.headPitch * 0.22 + userFace.gazeY * 0.14 : 0;
+  const mirrorGazeX = hasUserFace ? userFace.gazeX * (directMirror ? 1 : 0.55) : 0;
+  const mirrorGazeY = hasUserFace ? userFace.gazeY * (directMirror ? 1 : 0.55) : 0;
 
-  const targetGx = Math.max(-1.05, Math.min(1.05, st.targetGazeX + microDriftX + mirrorGazeX));
-  const targetGy = Math.max(-0.68, Math.min(0.68, st.targetGazeY + microDriftY + mirrorGazeY));
+  const targetGx = Math.max(-1.05, Math.min(1.05, (directMirror ? 0 : st.targetGazeX + microDriftX) + mirrorGazeX));
+  const targetGy = Math.max(-0.68, Math.min(0.68, (directMirror ? 0 : st.targetGazeY + microDriftY) + mirrorGazeY));
+  if (hasUserFace) blink = Math.max(blink * (directMirror ? 0 : 1), userFace.blink ?? 0);
 
   const gazeAlpha = 1 - Math.exp(-dt * 28);
   st.gazeX += (targetGx - st.gazeX) * gazeAlpha;
@@ -250,11 +253,24 @@ export function stepExpressionEngine(
 
   // Subconscious empathetic facial mirroring from user's camera expression
   if (hasUserFace) {
-    const mirrorWeight = active ? 0.24 : 0.42;
+    const mirrorWeight = directMirror ? 1 : active ? 0.5 : 0.75;
     if (emotion !== "angry" && emotion !== "sad") {
-      emSmile += userFace.smile * 0.38 * mirrorWeight;
-      emCheek += userFace.smile * 0.34 * mirrorWeight;
-      emSquint += userFace.smile * 0.18 * mirrorWeight;
+      emSmile += userFace.smile * 0.8 * mirrorWeight;
+      emCheek += userFace.smile * 0.7 * mirrorWeight;
+      emSquint += userFace.smile * 0.35 * mirrorWeight;
+    }
+    if (!active || directMirror) emOpen = Math.max(emOpen, userFace.mouthOpen * mirrorWeight);
+    emSmile -= (userFace.mouthFrown ?? 0) * 0.65 * mirrorWeight;
+    emInnerBrowY += (userFace.browInnerUp ?? 0) * 0.8 * mirrorWeight;
+    emOuterBrowY -= (userFace.mouthFrown ?? 0) * 0.35 * mirrorWeight;
+    emNoseFlare += (userFace.noseSneer ?? 0) * mirrorWeight;
+    emSquint += (userFace.eyeSquint ?? 0) * mirrorWeight;
+    emEyeWide += (userFace.eyeWide ?? 0) * mirrorWeight;
+    if (directMirror) {
+      emSmile = userFace.smile * 0.9 - (userFace.mouthFrown ?? 0) * 0.65;
+      emInnerBrowY = (userFace.browInnerUp ?? userFace.browRaise) * 0.9 - userFace.browFurrow * 0.7;
+      emInnerBrowPinch = userFace.browFurrow;
+      emOuterBrowY = userFace.browRaise * 0.8 - userFace.browFurrow * 0.3;
     }
     if (emotion === "neutral" || emotion === "sad" || emotion === "angry") {
       emInnerBrowPinch += userFace.browFurrow * 0.32 * mirrorWeight;
@@ -322,10 +338,10 @@ export function stepExpressionEngine(
   const speechNod = active ? Math.sin(t * 3.2) * st.browBeat * 0.38 : 0;
 
   // Subconscious side-turn mirroring: if user turns head left/right, avatar subtly follows toward that side
-  const mirrorYaw = hasUserFace ? userFace.headYaw * 0.34 : 0;
-  const mirrorPitch = hasUserFace ? userFace.headPitch * 0.24 : 0;
+  const mirrorYaw = hasUserFace ? userFace.headYaw * (directMirror ? 1 : 0.5) : 0;
+  const mirrorPitch = hasUserFace ? userFace.headPitch * (directMirror ? 1 : 0.4) : 0;
 
-  const targetYaw =
+  const targetYaw = directMirror ? mirrorYaw * mScale :
     (Math.sin(t * 0.68) * (active ? 0.62 : 0.42) +
       Math.cos(t * 0.29) * (active ? 0.28 : 0.18) +
       (active ? Math.sin(t * 1.75) * visemes.level * 0.28 : 0) +
@@ -333,7 +349,7 @@ export function stepExpressionEngine(
       mirrorYaw) *
     mScale;
 
-  const targetPitch =
+  const targetPitch = directMirror ? mirrorPitch * mScale :
     (Math.sin(t * 0.88) * 0.34 +
       Math.cos(t * 0.38) * 0.15 +
       (active ? -st.open * 0.12 - speechNod : nodWave * 1.35 + 0.06) +
@@ -342,7 +358,7 @@ export function stepExpressionEngine(
       mirrorPitch) *
     mScale;
 
-  const targetRoll =
+  const targetRoll = directMirror ? (userFace?.headRoll ?? 0) * mScale :
     (Math.sin(t * 0.78) * 0.048 +
       Math.cos(t * 0.34) * 0.022 +
       (listening ? 0.022 : 0) +

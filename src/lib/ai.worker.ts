@@ -53,11 +53,16 @@ self.onmessage = async (ev: MessageEvent) => {
         }
 
         const useGPU = await hasWebGPU();
+        let hasF16 = false;
+        if (useGPU) {
+          const adapter = await (self.navigator as Navigator & { gpu?: { requestAdapter: () => Promise<{ features: Set<string> } | null> } }).gpu?.requestAdapter();
+          hasF16 = !!adapter?.features.has("shader-f16");
+        }
         const createWith = async (gpu: boolean) => {
           const files: Record<string, { loaded: number; total: number }> = {};
           return pipeline("text-generation", msg.repo, {
             device: gpu ? "webgpu" : "wasm",
-            dtype: gpu ? "q4f16" : msg.cpuDtype,
+            dtype: gpu ? (hasF16 ? "q4f16" : "q4") : msg.cpuDtype,
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             progress_callback: (p: any) => {
               if (p.status === "progress") {

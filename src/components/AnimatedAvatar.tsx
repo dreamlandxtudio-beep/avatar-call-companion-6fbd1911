@@ -900,6 +900,17 @@ function buildAvatarMeshes(face: FacePts): BuiltMeshes {
     if (innerLipSet.has(a) && innerLipSet.has(b) && innerLipSet.has(c)) continue;
     faceIdxArr.push(a, b, c);
   }
+  // MediaPipe tessellation leaves holes inside both eye contours. Fill those apertures
+  // so the fragment shader can actually move the irises instead of exposing the static base photo.
+  for (const loop of [RIGHT_EYE_LOOP, LEFT_EYE_LOOP]) {
+    const anchor = loop[0];
+    if (anchor === undefined) continue;
+    for (let i = 1; i < loop.length - 1; i++) {
+      const b = loop[i];
+      const c = loop[i + 1];
+      if (b !== undefined && c !== undefined) faceIdxArr.push(anchor, b, c);
+    }
+  }
 
   // 3) Explicit watertight multi-row oral interior mesh bridging INNER_UPPER_LIP <-> INNER_LOWER_LIP
   const M_COLS = INNER_UPPER_LIP.length; // 11 paired columns from corner 78 to corner 308
@@ -971,6 +982,7 @@ export function AnimatedAvatar({
   localOnly = false,
   fit = "contain",
   userFace,
+  mirrorMode = false,
   className = "",
 }: {
   src: string | null;
@@ -984,6 +996,7 @@ export function AnimatedAvatar({
   localOnly?: boolean | undefined;
   fit?: "contain" | "cover" | undefined;
   userFace?: UserFaceObservation | undefined;
+  mirrorMode?: boolean | undefined;
   className?: string | undefined;
 }) {
   const effectiveSrc = src || "/__l5e/assets-v1/ea7b23b3-bee4-43b1-ae6c-9228330211ec/default.jpg";
@@ -1007,6 +1020,8 @@ export function AnimatedAvatar({
   fitRef.current = fit;
   const userFaceRef = useRef<UserFaceObservation | undefined>(userFace);
   userFaceRef.current = userFace;
+  const mirrorModeRef = useRef(mirrorMode);
+  mirrorModeRef.current = mirrorMode;
 
   useEffect(() => {
     let cancel = false;
@@ -1261,6 +1276,7 @@ export function AnimatedAvatar({
         hasVisibleTeeth: face.hasVisibleTeeth,
         restMouthRatio: face.restMouthRatio,
         userFace: userFaceRef.current,
+        mirrorMode: mirrorModeRef.current,
         reducedMotion,
       });
 
@@ -1334,8 +1350,8 @@ export function AnimatedAvatar({
       gl.uniform1f(uLoc.uEyeWide, frame.eyeWide);
       gl.uniform1f(uLoc.uNoseFlare, frame.noseFlare);
 
-      gl.uniform2f(uLoc.uHeadRot, frame.headYaw * 0.12, frame.headPitch * 0.12);
-      gl.uniform1f(uLoc.uHeadRoll, frame.headRoll * 0.2);
+      gl.uniform2f(uLoc.uHeadRot, frame.headYaw * 0.2, frame.headPitch * 0.18);
+      gl.uniform1f(uLoc.uHeadRoll, frame.headRoll * 0.5);
       gl.uniform2f(uLoc.uHeadTranslate, 0, 0);
       gl.uniform1f(uLoc.uTorsoBreath, 0);
       gl.uniform2f(uLoc.uHand0Delta, 0, 0);

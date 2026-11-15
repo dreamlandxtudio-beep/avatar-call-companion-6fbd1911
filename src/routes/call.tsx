@@ -48,12 +48,12 @@ import { AvatarImg } from "@/components/AvatarImg";
 export const Route = createFileRoute("/call")({
   head: () => ({
     meta: [
-      { title: "Videollamada — Yume" },
-      { name: "description", content: "Videollamada realista en tiempo real en Yume." },
-      { property: "og:title", content: "Videollamada — Yume" },
+      { title: "Videollamada — YUME" },
+      { name: "description", content: "Videollamada realista en tiempo real en YUME." },
+      { property: "og:title", content: "Videollamada — YUME" },
       {
         property: "og:description",
-        content: "Videollamada realista en tiempo real en Yume.",
+        content: "Videollamada realista en tiempo real en YUME.",
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },

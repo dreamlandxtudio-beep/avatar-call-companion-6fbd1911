@@ -47,7 +47,7 @@ export function AppSidebar({ current }: { current: "discover" | "chat" | "profil
         >
           <Link to="/">
             <Clapperboard className="h-4 w-4" />
-            <span>Estudio</span>
+            <span>Descubrir</span>
           </Link>
         </Button>
         <Button
@@ -110,7 +110,7 @@ export function AppSidebar({ current }: { current: "discover" | "chat" | "profil
         )}
 
         <p className="px-2 font-mono text-[10px] font-medium uppercase tracking-widest text-muted-foreground">
-          Reparto
+          Tus conexiones
         </p>
         <div className="mt-1.5 flex-1 space-y-0.5 overflow-y-auto pr-1">
           {CHARACTERS.map((ch) => {

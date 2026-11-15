@@ -1,6 +1,7 @@
 // Voices: Gemini Cloud TTS (Spanish & English, WAV + real AnalyserNode lip-sync), Kokoro-82M, and device voices.
 // STT: MediaRecorder + Web Audio VAD -> /api/transcribe (Gemini 3.5 Transcribe), with browser SpeechRecognition fallback.
 import type { VoiceChoice } from "./store";
+import { voiceProsody } from "./voice-prosody";
 
 export const GEMINI_VOICES = [
   { id: "Kore", gender: "female" as const, label: "Kore · mujer, cálida y natural" },
@@ -26,6 +27,8 @@ let kLoading: Promise<void> | null = null;
 export function loadKokoro(onProgress?: (p: number) => void) {
   if (kLoading) return kLoading;
   kLoading = (async () => {
+    const { env } = await import("@huggingface/transformers");
+    env.useBrowserCache = true;
     const { KokoroTTS } = await import("kokoro-js");
     kokoro = await KokoroTTS.from_pretrained("onnx-community/Kokoro-82M-v1.0-ONNX", {
       dtype: "q8",
@@ -35,6 +38,9 @@ export function loadKokoro(onProgress?: (p: number) => void) {
         if (p.status === "progress" && p.total) onProgress?.(p.loaded / p.total);
       },
     });
+    // Load the voice bank too, not just the neural weights, so the first reply works offline.
+    await kokoro.generate("Hello.", { voice: "af_heart" });
+    await kokoro.generate("Hello.", { voice: "am_michael" });
   })().catch((e) => {
     kLoading = null;
     throw e;
@@ -333,7 +339,7 @@ export async function speak(
     try {
       await loadKokoro();
       if (ctrl.signal.aborted) return;
-      const a = await kokoro.generate(clean, { voice: voice.id || "af_heart" });
+      const a = await kokoro.generate(clean, { voice: voice.id || "af_heart", speed: voiceProsody(emotion).rate });
       if (ctrl.signal.aborted) return;
       const c = unlockAudio();
       if (c) {
@@ -343,7 +349,7 @@ export async function speak(
         return;
       }
     } catch (e) {
-      console.warn("Kokoro failed, falling back", e);
+      throw new Error(`La voz Kokoro no pudo prepararse. La voz del sistema sigue disponible. ${e instanceof Error ? e.message : ""}`);
     }
   }
 
@@ -398,8 +404,9 @@ export async function speak(
 
     const u = new SpeechSynthesisUtterance(clean);
     u.lang = lang;
-    u.rate = 0.98;
-    u.pitch = 1;
+    const prosody = voiceProsody(emotion);
+    u.rate = prosody.rate;
+    u.pitch = prosody.pitch;
     const v =
       speechSynthesis.getVoices().find((x) => x.voiceURI === voice.id) || systemVoices(lang)[0];
     if (v) u.voice = v;
