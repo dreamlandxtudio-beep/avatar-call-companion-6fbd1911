@@ -349,7 +349,7 @@ export async function speak(
         return;
       }
     } catch (e) {
-      console.warn("Kokoro failed, falling back", e);
+      throw new Error(`La voz Kokoro no pudo prepararse. La voz del sistema sigue disponible. ${e instanceof Error ? e.message : ""}`);
     }
   }
 
