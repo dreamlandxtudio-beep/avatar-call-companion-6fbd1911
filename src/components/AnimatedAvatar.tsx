@@ -900,6 +900,17 @@ function buildAvatarMeshes(face: FacePts): BuiltMeshes {
     if (innerLipSet.has(a) && innerLipSet.has(b) && innerLipSet.has(c)) continue;
     faceIdxArr.push(a, b, c);
   }
+  // MediaPipe tessellation leaves holes inside both eye contours. Fill those apertures
+  // so the fragment shader can actually move the irises instead of exposing the static base photo.
+  for (const loop of [RIGHT_EYE_LOOP, LEFT_EYE_LOOP]) {
+    const anchor = loop[0];
+    if (anchor === undefined) continue;
+    for (let i = 1; i < loop.length - 1; i++) {
+      const b = loop[i];
+      const c = loop[i + 1];
+      if (b !== undefined && c !== undefined) faceIdxArr.push(anchor, b, c);
+    }
+  }
 
   // 3) Explicit watertight multi-row oral interior mesh bridging INNER_UPPER_LIP <-> INNER_LOWER_LIP
   const M_COLS = INNER_UPPER_LIP.length; // 11 paired columns from corner 78 to corner 308

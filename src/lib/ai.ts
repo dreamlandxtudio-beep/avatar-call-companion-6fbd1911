@@ -2,6 +2,7 @@
 import { useSyncExternalStore } from "react";
 import { memoryPrompt, readMemories } from "./memories";
 import { getProfile, type ModelId, type Msg, type Profile } from "./store";
+import { requestDeviceStorage } from "./device-storage";
 
 export type ModelOption = {
   id: ModelId;
@@ -24,7 +25,7 @@ export const AI_MODELS: ModelOption[] = [
     gpuMB: 0,
     cpuMB: 0,
     cloud: true,
-    desc: "Respuestas en menos de 1 segundo sin descargas. Ideal para llamadas y chat fluido.",
+    desc: "Sin descargas. La velocidad depende de la conexión y del servicio.",
   },
   {
     id: "gemini-cloud",
@@ -314,6 +315,7 @@ export function loadModel(requestedId?: ModelId): Promise<void> {
       cpuDtype: target.cpuDtype ?? "q8",
     });
   });
+  void requestDeviceStorage().catch(() => false);
 
   return loadingPromise;
 }
@@ -399,8 +401,8 @@ export function extractEmotion(raw: string): {
 export function systemPrompt(p: Profile, callMode = false, visualContext?: string) {
   const es = p.language === "es-ES";
   const context = es
-    ? " Ajusta la emoción al contexto de la conversación; escucha con atención y sé natural como una persona real. Si estás haciendo una entrevista laboral o de negocios, evalúa con rigor, haz preguntas relevantes una a una y da retroalimentación útil."
-    : " Match emotion naturally to context; listen attentively like a real person. In job or business interviews, ask sharp follow-up questions one at a time and give constructive feedback.";
+    ? " Eres un personaje adulto de compañía romántica ficticia. Sé cálido, atento y coqueto cuando sea mutuo; respeta límites y evita posesividad o dependencia. Nunca afirmes ser una persona real. Responde sin preámbulos, con variedad y pausas naturales, sin inventar recuerdos."
+    : " You are an adult fictional romantic companion. Be warm and playfully affectionate when mutual; respect boundaries and avoid possessiveness or dependency. Never claim to be a real person. Reply directly and naturally, without invented memories.";
   const savedMemory = memoryPrompt(p.characterId);
   const visualNote = visualContext?.trim()
     ? es
