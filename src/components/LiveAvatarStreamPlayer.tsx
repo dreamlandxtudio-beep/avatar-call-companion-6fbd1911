@@ -30,24 +30,8 @@ export function LiveAvatarStreamPlayer({
       setDetail("Configura una URL válida en Personalizar.");
       return;
     }
-    setStatus("checking");
-    try {
-      setStatus("offline");
-      setDetail("Falta conectar una sesión de vídeo del servidor GPU; una URL de estudio no genera vídeo en esta llamada.");
-      return;
-      const res = await fetch(`/api/liveavatar/status?url=${encodeURIComponent(safeUrl)}`);
-      const data = (await res.json()) as { ok?: boolean; error?: string };
-      if (data.ok) {
-        setStatus("connected");
-        setDetail("Servidor externo accesible en tu equipo con GPU.");
-      } else {
-        setStatus("offline");
-        setDetail(data.error || "No responde el servidor externo.");
-      }
-    } catch {
-      setStatus("offline");
-      setDetail("No se pudo comprobar el estado del servidor.");
-    }
+    setStatus("offline");
+    setDetail("Falta conectar una sesión de vídeo del servidor GPU; una URL de estudio no genera vídeo en esta llamada.");
   };
 
   useEffect(() => {
