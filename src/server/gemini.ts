@@ -280,21 +280,7 @@ export async function synthesizeSpeech(opts: {
     return ensureWavBuffer(Buffer.from(base64Audio, "base64"), inline?.mimeType);
   };
 
-  try {
-    return await Promise.race([
-      callTts(ai, "gemini-3.8-flash-lite-tts", expressiveText, true),
-      new Promise<never>((_, reject) => setTimeout(() => reject(new Error("TTS_TIMEOUT")), 3200)),
-    ]);
-  } catch {
-    try {
-      return await Promise.race([
-        callTts(beta, "gemini-3.8-flash-lite-tts", cleanText, false),
-        new Promise<never>((_, reject) => setTimeout(() => reject(new Error("TTS_TIMEOUT")), 3200)),
-      ]);
-    } catch {
-      return await callTts(ai, "gemini-3.8-flash-tts", cleanText, false);
-    }
-  }
+  return callTts(beta, "gemini-3.8-flash-lite-tts", cleanText, false);
 }
 
 export type VisionHandKeypoints = {

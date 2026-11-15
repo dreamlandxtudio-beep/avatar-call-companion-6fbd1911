@@ -259,7 +259,7 @@ async function speakViaGemini(
   let arr = ttsCache.get(cacheKey);
   if (!arr) {
     const timeout = new AbortController();
-    const timer = setTimeout(() => timeout.abort(), 5200);
+
     const onParentAbort = () => timeout.abort();
     signal.addEventListener("abort", onParentAbort, { once: true });
 
@@ -275,15 +275,19 @@ async function speakViaGemini(
           ...(emotion ? { emotion } : {}),
         }),
       });
-      if (!res.ok) return false;
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error || `Servicio de voz: ${res.status}`);
+      }
       arr = await res.arrayBuffer();
       if (arr.byteLength >= 64 && ttsCache.size < 24) {
         ttsCache.set(cacheKey, arr);
       }
-    } catch {
-      return signal.aborted;
+    } catch (error) {
+      if (signal.aborted) return true;
+      throw error;
     } finally {
-      clearTimeout(timer);
+
       signal.removeEventListener("abort", onParentAbort);
     }
   }

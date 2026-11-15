@@ -448,7 +448,7 @@ async function replyCloud(
   });
 
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 14000);
+
 
   try {
     const res = await fetch("/api/chat", {
@@ -509,8 +509,6 @@ async function replyCloud(
       throw new Error("Tiempo de espera agotado al conectar con Gemini.");
     }
     throw e;
-  } finally {
-    clearTimeout(timeout);
   }
 }
 
