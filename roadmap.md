@@ -19,8 +19,9 @@
 - [ ] Monetization waits for pricing and checkout requirements.
 
 ## Current portrait repair
-- [ ] Replace overlapping face layers with one continuous textured portrait mesh.
-- [ ] Preserve source eyelid/lip texture and specialize human/anime articulation.
-- [ ] Delay subtle reactions until sustained fresh observations; keep attentive gaze.
-- [ ] Add deformed facial wireframe and expression previews in the mirror.
-- [ ] Verify portrait rendering, reactions and mobile controls.
+- [x] Replace overlapping face layers with one continuous textured portrait mesh; removed translucent photo transition.
+- [x] Preserve source eyelid/lip texture and specialize human/anime articulation; photographic teeth excluded for drawings.
+- [x] Delay subtle reactions until sustained fresh observations; hold/delay/cooldown tests pass, ordinary mouth/head copying removed.
+- [x] Add deformed facial wireframe and expression previews in the mirror; wireframe uses actual portrait deformation.
+- [x] Verify human/anime portrait rendering, changed frames, wireframe, reaction rules and mobile controls; no browser errors or overflow.
+- [ ] Full hidden-ear reconstruction and volumetric lip realism require a genuine 3D source or external inference; the local portrait remains bounded 2.5D.
