@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as AccountRouteImport } from './routes/account'
 import { Route as CallRouteImport } from './routes/call'
 import { Route as ChatRouteImport } from './routes/chat'
 import { Route as ProfileRouteImport } from './routes/profile'
@@ -17,6 +18,11 @@ import { Route as ProfileRouteImport } from './routes/profile'
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AccountRoute = AccountRouteImport.update({
+  id: '/account',
+  path: '/account',
   getParentRoute: () => rootRouteImport,
 } as any)
 const CallRoute = CallRouteImport.update({
@@ -37,12 +43,14 @@ const ProfileRoute = ProfileRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/account': typeof AccountRoute
   '/call': typeof CallRoute
   '/chat': typeof ChatRoute
   '/profile': typeof ProfileRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/account': typeof AccountRoute
   '/call': typeof CallRoute
   '/chat': typeof ChatRoute
   '/profile': typeof ProfileRoute
@@ -50,20 +58,22 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/account': typeof AccountRoute
   '/call': typeof CallRoute
   '/chat': typeof ChatRoute
   '/profile': typeof ProfileRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/call' | '/chat' | '/profile'
+  fullPaths: '/' | '/account' | '/call' | '/chat' | '/profile'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/call' | '/chat' | '/profile'
-  id: '__root__' | '/' | '/call' | '/chat' | '/profile'
+  to: '/' | '/account' | '/call' | '/chat' | '/profile'
+  id: '__root__' | '/' | '/account' | '/call' | '/chat' | '/profile'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AccountRoute: typeof AccountRoute
   CallRoute: typeof CallRoute
   ChatRoute: typeof ChatRoute
   ProfileRoute: typeof ProfileRoute
@@ -76,6 +86,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/account': {
+      id: '/account'
+      path: '/account'
+      fullPath: '/account'
+      preLoaderRoute: typeof AccountRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/call': {
@@ -104,6 +121,7 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AccountRoute: AccountRoute,
   CallRoute: CallRoute,
   ChatRoute: ChatRoute,
   ProfileRoute: ProfileRoute,

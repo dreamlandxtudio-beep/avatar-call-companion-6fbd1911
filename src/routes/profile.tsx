@@ -40,6 +40,7 @@ import {
 } from "@/lib/voice";
 import { AppSidebar } from "@/components/AppSidebar";
 import { Button } from "@/components/ui/button";
+import { MemoryPanel } from "@/components/MemoryPanel";
 import { CHARACTERS } from "@/lib/characters";
 import { AvatarImg } from "@/components/AvatarImg";
 
@@ -280,11 +281,10 @@ function ProfilePage() {
               <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
               <div>
                 <p className="text-sm font-semibold text-foreground">
-                  Modo 100% local (cero consumo de datos)
+                  Procesamiento local
                 </p>
                 <p className="mt-0.5 text-xs text-muted-foreground">
-                  Expresiones faciales, IA conversacional, voz y micrófono operan solo en tu
-                  navegador sin enviar audio ni mensajes a la nube.
+                  Los modelos se descargan en tu dispositivo. La disponibilidad de voz y dictado depende del navegador.
                 </p>
               </div>
             </div>
@@ -303,6 +303,7 @@ function ProfilePage() {
           </div>
         </div>
 
+        <MemoryPanel characterId={p.characterId ?? "default"} name={p.name} />
         <div className="mt-6 space-y-5">
           <div>
             <label className="mb-1.5 block text-sm text-muted-foreground">Nombre</label>
@@ -487,7 +488,7 @@ function ProfilePage() {
 
           <details className="rounded-xl border border-border bg-card/60 p-3.5 text-xs">
             <summary className="cursor-pointer font-medium text-muted-foreground">
-              Motor de animación facial
+              Animación y vídeo
             </summary>
             <div className="mt-3 space-y-3">
               <div className="grid grid-cols-2 gap-2">
@@ -501,7 +502,7 @@ function ProfilePage() {
                       : "border-border text-muted-foreground"
                   }`}
                 >
-                  Motor local WebGL2
+                  Retrato animado local
                 </Button>
                 <Button
                   variant="ghost"

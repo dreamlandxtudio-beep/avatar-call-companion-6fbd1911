@@ -1,6 +1,6 @@
 // AI engine: Google AI Studio cloud models (fast & smart) + local browser ONNX models in a Web Worker.
 import { useSyncExternalStore } from "react";
-import { memoryPrompt } from "./memories";
+import { memoryPrompt, readMemories } from "./memories";
 import { getProfile, type ModelId, type Msg, type Profile } from "./store";
 
 export type ModelOption = {
@@ -520,6 +520,7 @@ export async function replyWithEmotion(
   onToken?: (t: string) => void,
   opts?: { callMode?: boolean; visualContext?: string | undefined },
 ): Promise<{ text: string; emotion: AvatarEmotion; gifTag?: string | undefined }> {
+  if (p.characterId) { try { await readMemories(p.characterId); } catch { /* explicit memory UI handles retrieval errors */ } }
   const callMode = !!opts?.callMode;
   const visualContext = opts?.visualContext;
   let model = getModelOption(p.modelId);
