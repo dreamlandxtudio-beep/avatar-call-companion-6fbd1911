@@ -6,6 +6,7 @@ import {
   SendHorizontal,
   SlidersHorizontal,
   SmilePlus,
+  ScanFace,
   Video,
   X,
 } from "lucide-react";
@@ -33,11 +34,11 @@ export const Route = createFileRoute("/chat")({
   head: () => ({
     meta: [
       { title: "Conversación — Yume" },
-      { name: "description", content: "Chatea y prepara entrevistas con tu avatar en Yume." },
+      { name: "description", content: "Conversa con tu compañero ficticio en YUME." },
       { property: "og:title", content: "Conversación — Yume" },
       {
         property: "og:description",
-        content: "Chatea y prepara entrevistas con tu avatar en Yume.",
+        content: "Conversa con tu compañero ficticio en YUME.",
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
@@ -165,6 +166,7 @@ function Chat() {
               <span>Videollamada</span>
             </Link>
           </Button>
+          <Button asChild variant="ghost" size="icon" aria-label="Probar espejo"><Link to="/mirror"><ScanFace className="h-4 w-4" /></Link></Button>
           <Link
             to="/profile"
             aria-label="Personalizar"

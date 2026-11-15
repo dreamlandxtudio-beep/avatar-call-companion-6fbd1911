@@ -5,7 +5,7 @@
 - LiveAvatar: https://github.com/Alibaba-Quark/LiveAvatar — GPU-hosted audio-driven generation. Intel Iris Xe cannot execute its CUDA pipeline; a URL to Gradio is not a live session API.
 
 ## Anime portraits
-- Talking Head Anime 3: https://github.com/pkhungurn/talking-head-anime-3-demo — dedicated anime eye, mouth and pose controls, designed around prepared front-facing character illustrations; not arbitrary photos. The demo code is MIT but the pretrained model terms restrict commercial use; do not ship its weights in a paid product without clearance.
+- Talking Head Anime 3: https://github.com/pkhungurn/talking-head-anime-3-demo — dedicated anime eye, mouth and pose controls, designed around prepared front-facing character illustrations; not arbitrary photos. The demo code is MIT and model weights are CC BY 4.0 (commercial use with attribution); supplied images have separate licenses.
 - AniPortrait: https://github.com/Zejun-Yang/AniPortrait — despite its name, primarily photorealistic audio/video-driven synthesis, not a dedicated anime browser engine.
 
 These are researched candidates, not installed or connected inference engines. Current animation is local portrait deformation; it cannot reconstruct hidden geometry, synthesize actual tears or infer a person's internal feelings. Camera mirror exposes observable face actions only.

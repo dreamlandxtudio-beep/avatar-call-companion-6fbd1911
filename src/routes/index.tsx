@@ -13,7 +13,6 @@ import { useRef, useState } from "react";
 import {
   applyAvatarPhoto,
   deleteCustomCharacter,
-  findCharacterById,
   resizeImage,
   selectCharacter,
   useCustomCharacters,
@@ -21,7 +20,7 @@ import {
   useProfile,
 } from "@/lib/store";
 import { CHARACTERS } from "@/lib/characters";
-import { AnimatedAvatar } from "@/components/AnimatedAvatar";
+
 import { AvatarImg } from "@/components/AvatarImg";
 import { AppSidebar } from "@/components/AppSidebar";
 import { BrandLogo } from "@/components/BrandLogo";
@@ -31,17 +30,17 @@ import { speak, unlockAudio } from "@/lib/voice";
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
-      { title: "Yume — videollamadas y entrevistas realistas con IA" },
+      { title: "YUME — personajes y conexiones románticas" },
       {
         name: "description",
         content:
-          "Simula entrevistas de trabajo, practica reuniones reales o conversa con personajes y fotos animadas localmente.",
+          "Descubre compañeros adultos realistas y anime para conversaciones, romance ficticio y videollamadas.",
       },
-      { property: "og:title", content: "Yume — videollamadas y entrevistas realistas con IA" },
+      { property: "og:title", content: "YUME — personajes y conexiones románticas" },
       {
         property: "og:description",
         content:
-          "Elige un entrevistador realista, personaje o sube una foto para animarla con voz, personalidad y memoria propia.",
+          "Conecta con personajes adultos de personalidad propia, voz y recuerdos que tú eliges guardar.",
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
@@ -50,7 +49,7 @@ export const Route = createFileRoute("/")({
   component: Home,
 });
 
-const CATEGORIES = ["Todos", "Entrevistas", "Realistas", "Personalizado", "Anime", "Creativa"];
+const CATEGORIES = ["Todos", "Romance", "Realistas", "Anime", "Creativa", "Personalizado"];
 
 function Home() {
   const p = useProfile();
@@ -72,7 +71,6 @@ function Home() {
     return matchesQuery && matchesCategory;
   });
 
-  const featured = findCharacterById(p.characterId) ?? allCharacters[0]!;
 
   return (
     <div className="app-layout">
@@ -101,90 +99,12 @@ function Home() {
           </div>
         </header>
 
-        <section
-          aria-label="Estudio activo"
-          className="studio-feature"
-        >
-          <div className="flex flex-col justify-between gap-5">
-            <div>
-              <div className="flex items-center justify-between gap-3">
-                <p className="font-mono text-[11px] uppercase tracking-widest text-muted-foreground">
-                  Perfil en escena · {featured.roleLabel}
-                </p>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  title={`Escuchar a ${featured.name}`}
-                  aria-label={`Escuchar a ${featured.name}`}
-                  onClick={() => {
-                    unlockAudio();
-                    void speak(
-                      `Hola, soy ${featured.name}. ¿Sobre qué te gustaría conversar hoy?`,
-                      featured.voice,
-                      p.language,
-                      undefined,
-                      { localOnly: p.localOnly },
-                    );
-                  }}
-                >
-                  <AudioLines className="h-4 w-4 text-muted-foreground" />
-                </Button>
-              </div>
-
-              <h1 className="mt-2 text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">
-                {featured.name}
-              </h1>
-              <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
-                {featured.tagline}
-              </p>
-              <p className="mt-3 text-xs text-muted-foreground/85">{featured.tags.join(" · ")}</p>
-            </div>
-
-            <div className="space-y-3">
-              <div className="flex flex-wrap items-center gap-2.5">
-                <Button asChild className="whitespace-nowrap shrink-0">
-                  <Link to="/call" onClick={() => selectCharacter(featured.id)}>
-                    <Video className="h-4 w-4" />
-                    <span>Iniciar videollamada</span>
-                  </Link>
-                </Button>
-                <Button asChild variant="secondary" className="whitespace-nowrap shrink-0">
-                  <Link to="/chat" onClick={() => selectCharacter(featured.id)}>
-                    <MessageSquareText className="h-4 w-4" />
-                    <span>Abrir chat</span>
-                  </Link>
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  disabled={uploading}
-                  onClick={() => upload.current?.click()}
-                  className="whitespace-nowrap shrink-0"
-                >
-                  <ImagePlus className="h-4 w-4" />
-                  <span>{uploading ? "Procesando…" : "Subir retrato"}</span>
-                </Button>
-              </div>
-              {uploadError && (
-                <p role="alert" className="text-xs text-destructive">
-                  {uploadError}
-                </p>
-              )}
-            </div>
+        <section className="border-b border-border py-7" aria-label="Descubrir personajes">
+          <div className="flex flex-wrap items-end justify-between gap-4">
+            <div><p className="text-sm font-semibold text-primary">Un mundo de conexiones</p><h1 className="mt-2 text-3xl font-black">Encuentra a tu persona favorita</h1></div>
+            <Button variant="secondary" onClick={() => upload.current?.click()} disabled={uploading}><ImagePlus className="h-4 w-4" />{uploading ? "Procesando…" : "Crear con una foto"}</Button>
           </div>
-
-          <div className="studio-photo">
-            <AnimatedAvatar
-              src={featured.avatar}
-              name={featured.name}
-              active={false}
-              engine={p.avatarEngine ?? "mediapipe-mesh"}
-              liveAvatarUrl={p.liveAvatarUrl}
-              localOnly={p.localOnly}
-              fit="contain"
-              className="h-full w-full"
-            />
-          </div>
+          {uploadError && <p role="alert" className="mt-3 text-xs text-destructive">{uploadError}</p>}
         </section>
 
         <input
@@ -209,10 +129,10 @@ function Home() {
           }}
         />
 
-        <section className="mt-9" aria-label="Reparto disponible">
+        <section className="mt-9" aria-label="Para ti">
           <div className="flex flex-wrap items-center justify-between gap-4">
             <div>
-              <h2 className="text-xl font-semibold text-foreground">Reparto disponible</h2>
+              <h2 className="text-xl font-semibold text-foreground">Para ti</h2>
               <p className="mt-0.5 text-xs text-muted-foreground">
                 
               </p>
@@ -221,7 +141,7 @@ function Home() {
               <Search className="h-4 w-4 shrink-0 text-muted-foreground" />
               <input
                 aria-label="Buscar personajes"
-                placeholder="Filtrar por nombre o rol…"
+                placeholder="Busca tu próxima conexión…"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 className="min-w-0 w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground"
@@ -237,7 +157,8 @@ function Home() {
             {CATEGORIES.map((tag) => {
               const active = category === tag;
               return (
-                <button
+                <Button
+                  variant="ghost"
                   key={tag}
                   type="button"
                   role="tab"
@@ -250,56 +171,39 @@ function Home() {
                   }`}
                 >
                   {tag}
-                </button>
+                </Button>
               );
             })}
           </div>
 
-          <div className="mt-5 grid gap-3 md:grid-cols-2">
+          <div className="character-grid mt-5">
             {characters.map((character) => {
               const isSelected = p.characterId === character.id;
               return (
                 <article
                   key={character.id}
-                  className={`flex min-w-0 items-center gap-3.5 rounded-xl border bg-card p-3.5 transition-colors ${
-                    isSelected ? "border-foreground/50" : "border-border hover:border-foreground/25"
-                  }`}
+                  className={`min-w-0 overflow-hidden rounded-2xl border bg-card transition-colors ${isSelected ? "border-primary/60" : "border-border hover:border-primary/40"}`}
                 >
-                  <button
-                    type="button"
-                    onClick={() => selectCharacter(character.id)}
-                    className="relative h-20 w-16 shrink-0 overflow-hidden rounded-lg border border-border bg-background"
-                    aria-label={`Seleccionar a ${character.name}`}
-                  >
-                    <img
-                      src={character.avatar}
-                      alt={character.name}
-                      className="h-full w-full object-cover object-top"
-                    />
-                    {isSelected && (
-                      <span
-                        title="Perfil en escena"
-                        className="absolute right-1 top-1 flex h-5 w-5 items-center justify-center rounded bg-background/85 text-foreground"
-                      >
-                        <Check className="h-3 w-3" />
-                      </span>
-                    )}
-                  </button>
-
-                  <div className="min-w-0 flex-1">
+                  <Button type="button" variant="ghost" onClick={() => selectCharacter(character.id)} className="relative block h-auto w-full overflow-hidden rounded-none p-0" aria-label={`Seleccionar a ${character.name}`}>
+                    <img src={character.avatar} alt={character.name} className="character-cover" />
+                    {isSelected && <span className="absolute right-3 top-3 rounded-full bg-primary p-1 text-primary-foreground"><Check className="h-3 w-3" /></span>}
+                  </Button>
+                  <div className="min-w-0 p-3.5">
                     <div className="flex items-center justify-between gap-2">
-                      <button
+                      <Button
+                        variant="ghost"
                         type="button"
                         onClick={() => selectCharacter(character.id)}
-                        className="min-w-0 text-left"
+                        className="h-auto min-w-0 justify-start p-0 text-left"
                       >
-                        <h3 className="truncate text-base font-semibold text-foreground">
+                        <div className="min-w-0"><h3 className="truncate text-base font-extrabold text-foreground">
                           {character.name}
                         </h3>
                         <p className="truncate text-xs text-muted-foreground">
                           {character.roleLabel} · {character.tags.join(" · ")}
                         </p>
-                      </button>
+                        </div>
+                      </Button>
                       <div className="flex shrink-0 items-center gap-1">
                         <Button
                           variant="ghost"
@@ -315,7 +219,7 @@ function Home() {
                               p.language,
                               undefined,
                               { localOnly: p.localOnly },
-                            );
+                            ).catch(error => setUploadError(error instanceof Error ? error.message : "No se pudo reproducir la voz."));
                           }}
                         >
                           <AudioLines className="h-4 w-4 text-muted-foreground" />
@@ -335,7 +239,7 @@ function Home() {
                       </div>
                     </div>
 
-                    <p className="mt-1.5 line-clamp-1 text-xs text-muted-foreground">
+                    <p className="mt-1.5 line-clamp-2 min-h-8 text-xs text-muted-foreground">
                       {character.tagline}
                     </p>
 
