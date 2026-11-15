@@ -3,15 +3,15 @@
     "capability": "code",
     "source": "uploaded ZIP",
     "outcome": "migrate",
-    "status": "in_progress",
-    "next_action": "Import source without generated files or secrets"
+    "status": "verified",
+    "next_action": "Imported; source routes and asset rendering checked"
   },
   {
     "capability": "schema",
     "source": "browser local storage",
     "outcome": "migrate",
-    "status": "in_progress",
-    "next_action": "Create private Cloud memory storage"
+    "status": "verified",
+    "next_action": "Imported; source routes and asset rendering checked"
   },
   {
     "capability": "records",
@@ -24,8 +24,8 @@
     "capability": "auth identities",
     "source": "No account system detected",
     "outcome": "new",
-    "status": "in_progress",
-    "next_action": "Enable optional accounts for private memory"
+    "status": "pending",
+    "next_action": "Sign up and verify email to exercise private memory CRUD; no existing auth users available"
   },
   {
     "capability": "authorization",
@@ -38,22 +38,22 @@
     "capability": "uploaded file bytes",
     "source": "Bundled portraits",
     "outcome": "migrate",
-    "status": "in_progress",
-    "next_action": "Publish bundled images through asset pointers"
+    "status": "verified",
+    "next_action": "Imported; source routes and asset rendering checked"
   },
   {
     "capability": "external providers",
     "source": "Google Gemini / Kokoro / ONNX",
     "outcome": "preserve",
-    "status": "pending",
-    "next_action": "Configure Gemini securely and verify voice/chat"
+    "status": "partial",
+    "next_action": "Gemini chat verified through UI; TTS blocked by exhausted daily Google quota; local model generation and STT not yet verified"
   },
   {
     "capability": "public endpoints",
     "source": "Source /api/chat /tts /transcribe /face-landmarks /avatar-gender",
     "outcome": "migrate",
-    "status": "pending",
-    "next_action": "Restore compatible server routes"
+    "status": "partial",
+    "next_action": "Chat and TTS request contracts exercised; visual/gender/STT provider paths not verified"
   },
   {
     "capability": "callbacks",
@@ -80,8 +80,8 @@
     "capability": "secrets",
     "source": "GEMINI_API_KEY in server code",
     "outcome": "preserve",
-    "status": "pending",
-    "next_action": "Secure connection required"
+    "status": "verified",
+    "next_action": "Google AI Studio connector linked and credential path verified"
   },
   {
     "capability": "LiveAvatar",
@@ -101,7 +101,7 @@
     "capability": "verification",
     "source": "Not run",
     "outcome": "pending",
-    "status": "pending",
-    "next_action": "Check routes, camera, animation and private memory"
+    "status": "partial",
+    "next_action": "Desktop/mobile routes, rendered face, camera and chat verified; audible call, STT, memory CRUD and published checks remain"
   }
 ]
