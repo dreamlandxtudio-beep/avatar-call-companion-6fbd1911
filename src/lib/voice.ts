@@ -187,7 +187,7 @@ async function playAudioBuffer(
   src.connect(analyser!);
   current = src;
   const maxMs = Math.min(25000, Math.max(1500, Math.round((buf.duration || 3) * 1000) + 1200));
-  await new Promise<void>((resolve, reject) => {
+  await new Promise<void>((resolve) => {
     let settled = false;
     const done = () => {
       if (settled) return;
@@ -349,7 +349,7 @@ export async function speak(
 
   if (ctrl.signal.aborted) return;
 
-  await new Promise<void>((resolve) => {
+  await new Promise<void>((resolve, reject) => {
     let settled = false;
     let started = false;
 
