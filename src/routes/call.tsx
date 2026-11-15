@@ -600,7 +600,7 @@ function Call() {
               <input
                 value={typed}
                 onChange={(e) => setTyped(e.target.value)}
-                placeholder={micNote || "Escribe lo que quieres decir…"}
+                placeholder="Escribe lo que quieres decir…"
                 disabled={sending}
                 className="h-10 min-w-0 flex-1 rounded-full border border-border bg-card px-4 text-sm text-foreground outline-none ring-ring focus:ring-2 disabled:opacity-60"
               />
@@ -714,6 +714,7 @@ function Call() {
           )}
         </div>
       </section>
+      {micNote && <p role="alert" className="call-notice">{micNote}</p>}
     </main>
   );
 }
