@@ -352,7 +352,6 @@ export async function speak(
   await new Promise<void>((resolve) => {
     let settled = false;
     let started = false;
-    const estMs = Math.min(12000, Math.max(1800, clean.length * 75));
 
     const finish = (error?: Error) => {
       if (settled) return;

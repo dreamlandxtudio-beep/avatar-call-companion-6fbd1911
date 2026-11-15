@@ -81,15 +81,6 @@ export function defaultVoiceForGender(
   return { ...DEFAULT_DEVICE_VOICE };
 }
 
-const VOICE_REMAP: Record<string, string> = {
-  Orus: "Charon",
-  Algenib: "Fenrir",
-  Achird: "Puck",
-  Aoede: "Zephyr",
-  Leda: "Kore",
-  Sulafat: "Kore",
-};
-
 const DEFAULT_CHAR = CHARACTERS[0]!;
 const CONFIG_VERSION = 11;
 const CUSTOM_CHARS_KEY = "amiga.customCharacters";
@@ -207,10 +198,6 @@ function ensure() {
     } else {
       const gender: AvatarGender =
         profile.gender ?? (profile.avatar?.includes("male.jpg") ? "male" : "female");
-      const remappedVoice =
-        profile.voice?.engine === "gemini" && VOICE_REMAP[profile.voice.id]
-          ? { engine: "gemini" as const, id: VOICE_REMAP[profile.voice.id]! }
-          : profile.voice;
       profile = {
         ...profile,
         characterId: profile.characterId ?? DEFAULT_CHAR.id,

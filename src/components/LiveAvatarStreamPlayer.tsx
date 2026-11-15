@@ -5,8 +5,6 @@ import { Button } from "./ui/button";
 
 export function LiveAvatarStreamPlayer({
   serverUrl,
-  name,
-  fallbackPhoto,
 }: {
   serverUrl?: string | undefined;
   active: boolean;
