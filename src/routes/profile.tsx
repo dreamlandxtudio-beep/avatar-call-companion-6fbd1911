@@ -48,15 +48,15 @@ import { AvatarImg } from "@/components/AvatarImg";
 export const Route = createFileRoute("/profile")({
   head: () => ({
     meta: [
-      { title: "Personalizar — Yume" },
+      { title: "Personalizar — YUME" },
       {
         name: "description",
-        content: "Crea avatares permanentes, elige voz y activa el modo 100% local en Yume.",
+        content: "Crea avatares permanentes, elige voz y activa el modo 100% local en YUME.",
       },
-      { property: "og:title", content: "Personalizar — Yume" },
+      { property: "og:title", content: "Personalizar — YUME" },
       {
         property: "og:description",
-        content: "Crea avatares permanentes, elige voz y activa el modo 100% local en Yume.",
+        content: "Crea avatares permanentes, elige voz y activa el modo 100% local en YUME.",
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },

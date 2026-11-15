@@ -100,17 +100,17 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "Yume — videollamadas y entrevistas realistas con IA" },
+      { title: "YUME — conexiones con personajes de IA" },
       {
         name: "description",
         content:
-          "Videollamadas realistas para entrevistas de trabajo, reuniones de negocios y personajes anime con expresiones locales.",
+          "Conversaciones y videollamadas con compañeros adultos ficticios, realistas y anime.",
       },
-      { property: "og:title", content: "Yume — videollamadas y entrevistas realistas con IA" },
+      { property: "og:title", content: "YUME — conexiones con personajes de IA" },
       {
         property: "og:description",
         content:
-          "Videollamadas realistas para entrevistas de trabajo, reuniones de negocios y personajes anime con expresiones locales.",
+          "Conversaciones y videollamadas con compañeros adultos ficticios, realistas y anime.",
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },

@@ -33,9 +33,9 @@ import { ModelBanner } from "@/components/ModelBanner";
 export const Route = createFileRoute("/chat")({
   head: () => ({
     meta: [
-      { title: "Conversación — Yume" },
+      { title: "Conversación — YUME" },
       { name: "description", content: "Conversa con tu compañero ficticio en YUME." },
-      { property: "og:title", content: "Conversación — Yume" },
+      { property: "og:title", content: "Conversación — YUME" },
       {
         property: "og:description",
         content: "Conversa con tu compañero ficticio en YUME.",
@@ -103,7 +103,7 @@ function Chat() {
   );
   const charMeta = findCharacterById(p.characterId);
   const starters = charMeta?.starters ?? [
-    `Hola ${p.name}, ¿podemos empezar una entrevista práctica?`,
+    `Hola ${p.name}, ¿nos conocemos un poco mejor?`,
     "Cuéntame sobre ti.",
     "Conversemos sobre un proyecto reciente.",
   ];

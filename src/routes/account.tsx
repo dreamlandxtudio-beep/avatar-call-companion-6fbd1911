@@ -6,7 +6,7 @@ import { lovable } from "@/integrations/lovable";
 import { Button } from "@/components/ui/button";
 import { clearMemoryCache } from "@/lib/memories";
 export const Route = createFileRoute("/account")({
-  head: () => ({ meta: [{ title: "Tu cuenta — Yume" }, { name: "description", content: "Accede a tus recuerdos privados en Yume." }, { property: "og:title", content: "Tu cuenta — Yume" }, { property: "og:description", content: "Tu cuenta y recuerdos privados." }, { property: "og:type", content: "website" }, { name: "twitter:card", content: "summary" }] }),
+  head: () => ({ meta: [{ title: "Tu cuenta — YUME" }, { name: "description", content: "Accede a tus recuerdos privados en YUME." }, { property: "og:title", content: "Tu cuenta — YUME" }, { property: "og:description", content: "Tu cuenta y recuerdos privados." }, { property: "og:type", content: "website" }, { name: "twitter:card", content: "summary" }] }),
   component: Account,
 });
 function Account() {
