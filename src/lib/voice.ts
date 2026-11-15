@@ -49,7 +49,7 @@ export function systemVoices(lang: string) {
   return all.filter((v) => v.lang.startsWith(pre)).sort((a, b) => score(b) - score(a));
 }
 const score = (v: SpeechSynthesisVoice) =>
-  (/natural|neural|premium|enhanced|google|siri/i.test(v.name) ? 2 : 0) + (v.localService ? 0 : 1);
+  (/natural|neural|premium|enhanced|google|siri/i.test(v.name) ? 2 : 0) + (v.localService ? 4 : 0);
 
 let ctx: AudioContext | null = null;
 let analyser: AnalyserNode | null = null;
@@ -187,7 +187,7 @@ async function playAudioBuffer(
   src.connect(analyser!);
   current = src;
   const maxMs = Math.min(25000, Math.max(1500, Math.round((buf.duration || 3) * 1000) + 1200));
-  await new Promise<void>((resolve) => {
+  await new Promise<void>((resolve, reject) => {
     let settled = false;
     const done = () => {
       if (settled) return;
@@ -354,7 +354,7 @@ export async function speak(
     let started = false;
     const estMs = Math.min(12000, Math.max(1800, clean.length * 75));
 
-    const finish = () => {
+    const finish = (error?: Error) => {
       if (settled) return;
       settled = true;
       ctrl.signal.removeEventListener("abort", onAbort);
@@ -364,8 +364,8 @@ export async function speak(
         fakeTimer = null;
       }
       clearTimeout(noStartWatchdog);
-      clearTimeout(maxWatchdog);
-      resolve();
+      if (error) reject(error);
+      else resolve();
     };
 
     const onAbort = () => {
@@ -384,24 +384,23 @@ export async function speak(
       tick();
     };
 
-    // If speechSynthesis is unavailable or silently blocked (iframe/headless/no voices), animate mouth briefly and resolve so calls never hang.
+    // Never pretend to speak when the device cannot start audio.
     const noStartWatchdog = setTimeout(() => {
       if (!started && !settled) {
-        startCadence();
-        setTimeout(finish, Math.min(4500, estMs));
+        if (typeof speechSynthesis !== "undefined") speechSynthesis.cancel();
+        finish(new Error("La voz del dispositivo no pudo iniciar. Prueba otra voz en Personalizar."));
       }
-    }, 650);
-
-    const maxWatchdog = setTimeout(finish, estMs + 2500);
+    }, 8000);
 
     if (typeof speechSynthesis === "undefined") {
-      startCadence();
-      setTimeout(finish, Math.min(4000, estMs));
+      finish(new Error("Este navegador no dispone de voz del sistema."));
       return;
     }
 
     const u = new SpeechSynthesisUtterance(clean);
     u.lang = lang;
+    u.rate = 0.98;
+    u.pitch = 1;
     const v =
       speechSynthesis.getVoices().find((x) => x.voiceURI === voice.id) || systemVoices(lang)[0];
     if (v) u.voice = v;
@@ -411,21 +410,16 @@ export async function speak(
       clearTimeout(noStartWatchdog);
       startCadence();
     };
-    u.onend = finish;
-    u.onerror = () => {
-      if (!started) {
-        startCadence();
-        setTimeout(finish, Math.min(3500, estMs));
-      } else {
-        finish();
-      }
+    u.onend = () => finish();
+    u.onerror = (event) => {
+      if (ctrl.signal.aborted || event.error === "canceled" || event.error === "interrupted") finish();
+      else finish(new Error("No se pudo reproducir la voz del dispositivo. Prueba otra voz en Personalizar."));
     };
 
     try {
       speechSynthesis.speak(u);
     } catch {
-      startCadence();
-      setTimeout(finish, Math.min(3500, estMs));
+      finish(new Error("El navegador bloqueó la voz. Pulsa Probar voz o vuelve a iniciar la llamada."));
     }
   });
 }
