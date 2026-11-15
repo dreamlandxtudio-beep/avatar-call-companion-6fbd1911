@@ -29,7 +29,9 @@ export function LiveAvatarStreamPlayer({
       return;
     }
     setStatus("offline");
-    setDetail("Falta conectar una sesión de vídeo del servidor GPU; una URL de estudio no genera vídeo en esta llamada.");
+    setDetail(
+      "Falta conectar una sesión de vídeo del servidor GPU; una URL de estudio no genera vídeo en esta llamada.",
+    );
   };
 
   useEffect(() => {
@@ -51,8 +53,7 @@ export function LiveAvatarStreamPlayer({
           </span>
         </p>
         <p className="text-xs text-muted-foreground">
-          {detail ||
-            "Animación local activa; vídeo LiveAvatar no conectado."}
+          {detail || "Animación local activa; vídeo LiveAvatar no conectado."}
         </p>
         <div className="flex flex-wrap justify-center gap-2">
           <Button onClick={() => setProfile({ avatarEngine: "mediapipe-mesh" })}>

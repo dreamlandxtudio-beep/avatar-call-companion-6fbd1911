@@ -112,20 +112,20 @@ function Chat() {
     <div className="app-layout">
       <AppSidebar current="chat" />
       <main className="conversation-page">
-        <header className="flex min-h-[60px] items-center gap-2.5 border-b border-border px-3 py-2">
+        <header className="flex min-h-[60px] items-center gap-2 border-b border-border px-3 py-2 sm:gap-2.5 sm:px-5">
           <Link
             to="/"
             aria-label="Volver"
-            className="flex min-h-[40px] min-w-[40px] items-center justify-center rounded-full text-foreground hover:bg-secondary/60"
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-border/60 bg-card text-foreground transition-colors hover:bg-secondary"
           >
-            <ArrowLeft className="h-5 w-5" />
+            <ArrowLeft className="h-4 w-4" />
           </Link>
           <AvatarImg src={p.avatar} name={p.name} className="h-9 w-9 shrink-0 text-sm" />
           <div className="min-w-0 flex-1 pl-0.5">
-            <div className="truncate text-sm font-semibold leading-tight text-foreground">
+            <div className="truncate text-sm font-black leading-tight text-foreground">
               {p.name}
             </div>
-            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <div className="flex items-center gap-2 text-xs font-bold text-muted-foreground">
               {typing !== null ? (
                 <span className="text-primary">escribiendo…</span>
               ) : (
@@ -141,7 +141,7 @@ function Chat() {
                     });
                     resetModel();
                   }}
-                  className="max-w-full truncate bg-transparent text-xs text-muted-foreground outline-none hover:text-foreground"
+                  className="max-w-full truncate bg-transparent text-xs font-bold text-muted-foreground outline-none hover:text-foreground"
                 >
                   {AI_MODELS.filter((m) => !p.localOnly || !m.cloud).map((m) => (
                     <option key={m.id} value={m.id} className="bg-card text-foreground">
@@ -151,28 +151,36 @@ function Chat() {
                 </select>
               )}
               {p.localOnly && (
-                <span className="shrink-0 text-[10px] font-medium text-primary">· 100% Local</span>
+                <span className="shrink-0 text-[10px] font-extrabold text-primary">
+                  · 100% Local
+                </span>
               )}
             </div>
           </div>
           <Button
             asChild
-            variant="secondary"
+            variant="default"
             size="sm"
-            className="whitespace-nowrap shrink-0 rounded-full"
+            className="h-10 whitespace-nowrap shrink-0 rounded-xl font-extrabold"
           >
             <Link to="/call">
-              <Video className="h-4 w-4 text-foreground" />
-              <span>Videollamada</span>
+              <Video className="h-4 w-4" />
+              <span className="hidden sm:inline">Videollamada</span>
             </Link>
           </Button>
-          <Button asChild variant="ghost" size="icon" aria-label="Probar espejo"><Link to="/mirror"><ScanFace className="h-4 w-4" /></Link></Button>
+          <Link
+            to="/mirror"
+            aria-label="Probar espejo"
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-border/60 bg-card text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+          >
+            <ScanFace className="h-4 w-4" />
+          </Link>
           <Link
             to="/profile"
             aria-label="Personalizar"
-            className="flex min-h-[40px] min-w-[40px] items-center justify-center rounded-full text-muted-foreground hover:bg-secondary/60 hover:text-foreground"
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-border/60 bg-card text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
           >
-            <SlidersHorizontal className="h-5 w-5" />
+            <SlidersHorizontal className="h-4 w-4" />
           </Link>
         </header>
 
@@ -186,13 +194,15 @@ function Chat() {
                 name={p.name}
                 className="h-24 w-24 shadow-md ring-1 ring-border"
               />
-              <h1 className="mt-4 text-2xl font-semibold text-foreground">{p.name}</h1>
+              <h1 className="mt-4 text-2xl font-black text-foreground">{p.name}</h1>
               {charMeta?.roleLabel && (
-                <p className="mt-1 text-xs font-medium uppercase tracking-wider text-primary">
+                <p className="mt-1 text-xs font-extrabold uppercase tracking-wider text-primary">
                   {charMeta.roleLabel}
                 </p>
               )}
-              <p className="mt-3 text-sm leading-relaxed text-muted-foreground">{p.personality}</p>
+              <p className="mt-3 text-sm font-semibold leading-relaxed text-muted-foreground">
+                {p.personality}
+              </p>
 
               <div className="mt-6 flex w-full flex-col gap-2">
                 {starters.map((prompt) => (
@@ -200,7 +210,7 @@ function Chat() {
                     key={prompt}
                     type="button"
                     onClick={() => void sendMessage(prompt)}
-                    className="rounded-xl border border-border bg-card px-4 py-2.5 text-left text-sm text-foreground transition-colors hover:border-primary/45 hover:bg-secondary/60"
+                    className="rounded-xl border border-border bg-card px-4 py-3 text-left text-sm font-bold text-foreground transition-colors hover:border-primary/45 hover:bg-secondary/60"
                   >
                     {prompt}
                   </button>
@@ -253,6 +263,7 @@ function Chat() {
                         unlockAudio();
                         void speak(m.content, p.voice, p.language, undefined, {
                           localOnly: p.localOnly,
+                          gender: p.gender,
                         });
                       }}
                     >

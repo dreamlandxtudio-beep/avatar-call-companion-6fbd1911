@@ -272,13 +272,23 @@ export function fitCanonicalLandmarks(
 
     if (kp.stylized) {
       if (RIGHT_EYE_VERTS.has(i)) {
-        cy = cRightEye[1] + (cy - cRightEye[1]) * 1.48;
+        cy = cRightEye[1] + (cy - cRightEye[1]) * 1.72;
       } else if (LEFT_EYE_VERTS.has(i)) {
-        cy = cLeftEye[1] + (cy - cLeftEye[1]) * 1.48;
+        cy = cLeftEye[1] + (cy - cLeftEye[1]) * 1.72;
       }
     }
 
-    const [bx, by] = projectBase(cx, cy);
+    const [bx0, by] = projectBase(cx, cy);
+    let bx = bx0;
+    if (kp.stylized) {
+      const rxCenter = projectBase(cRightEye[0], cRightEye[1])[0];
+      const lxCenter = projectBase(cLeftEye[0], cLeftEye[1])[0];
+      if (RIGHT_EYE_VERTS.has(i)) {
+        bx = rxCenter + (bx0 - rxCenter) * 1.18;
+      } else if (LEFT_EYE_VERTS.has(i)) {
+        bx = lxCenter + (bx0 - lxCenter) * 1.18;
+      }
+    }
     let sx = 0;
     let sy = 0;
     let wSum = 0;

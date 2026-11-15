@@ -1,4 +1,4 @@
-import { visionFileset } from "./vision-runtime";
+import { resolveVisionFileset } from "./vision-runtime";
 // Face, iris, hand & portrait segmentation detection with MediaPipe + Gemini Vision anatomical fallback.
 import { fitCanonicalLandmarks, type FaceKeypoints, type HandKeypoints } from "./canonicalFace";
 
@@ -306,37 +306,105 @@ function analyzePhotoFeatures(
       return n > 0 ? [r / n, g / n, b / n] : fallback.skin;
     };
 
-    const sampleBrightestNear = (cx: number, cy: number, rx: number): [number, number, number] => {
-      let bestLuma = -1;
-      let best: [number, number, number] = [242, 240, 238];
-      const offsets = [-0.62, -0.48, 0.48, 0.62];
-      for (const ox of offsets) {
-        const px = Math.min(S - 1, Math.max(0, Math.round((cx + ox * rx) * (S - 1))));
-        const py = Math.min(S - 1, Math.max(0, Math.round(cy * (S - 1))));
-        const off = (py * S + px) * 4;
-        const r = data[off]!;
-        const g = data[off + 1]!;
-        const b = data[off + 2]!;
-        const luma = 0.299 * r + 0.587 * g + 0.114 * b;
-        const maxC = Math.max(r, g, b);
-        const sat = maxC > 0 ? (maxC - Math.min(r, g, b)) / maxC : 0;
-        if (sat < 0.35 && luma > bestLuma) {
-          bestLuma = luma;
-          best = [r, g, b];
+    const sampleEyeSclera = (
+      eyeLoop: number[],
+      pupil: [number, number],
+      rx: number,
+    ): [number, number, number] => {
+      const imgW = img.naturalWidth || img.width || 512;
+      const imgH = img.naturalHeight || img.height || 512;
+      let eMinX = 1;
+      let eMaxX = 0;
+      let eMinY = 1;
+      let eMaxY = 0;
+      for (const idx of eyeLoop) {
+        const pt = pts[idx];
+        if (!pt) continue;
+        if (pt[0] < eMinX) eMinX = pt[0];
+        if (pt[0] > eMaxX) eMaxX = pt[0];
+        if (pt[1] < eMinY) eMinY = pt[1];
+        if (pt[1] > eMaxY) eMaxY = pt[1];
+      }
+      const ew = Math.max(0.012, eMaxX - eMinX);
+      const eh = Math.max(0.008, eMaxY - eMinY);
+      const cropW = 64;
+      const cropH = 32;
+      const ec = document.createElement("canvas");
+      ec.width = cropW;
+      ec.height = cropH;
+      const ectx = ec.getContext("2d", { willReadFrequently: true });
+      if (!ectx) return [245, 245, 243];
+      ectx.drawImage(img, eMinX * imgW, eMinY * imgH, ew * imgW, eh * imgH, 0, 0, cropW, cropH);
+      const edata = ectx.getImageData(0, 0, cropW, cropH).data;
+      const eyePoly: Array<[number, number]> = eyeLoop.map((idx) => [
+        ((pts[idx]![0] - eMinX) / ew) * cropW,
+        ((pts[idx]![1] - eMinY) / eh) * cropH,
+      ]);
+
+      const candidates: Array<{ score: number; rgb: [number, number, number] }> = [];
+      for (let py = 0; py < cropH; py++) {
+        for (let px = 0; px < cropW; px++) {
+          if (!pointInPoly(px + 0.5, py + 0.5, eyePoly)) continue;
+          const nx = eMinX + ((px + 0.5) / cropW) * ew;
+          const ny = eMinY + ((py + 0.5) / cropH) * eh;
+          // Exclude central pupil/iris region so we measure genuine sclera white
+          const dPupil = Math.hypot(nx - pupil[0], ny - pupil[1]);
+          if (dPupil < rx * 0.42) continue;
+
+          const off = (py * cropW + px) * 4;
+          const r = edata[off]!;
+          const g = edata[off + 1]!;
+          const b = edata[off + 2]!;
+          const luma = 0.299 * r + 0.587 * g + 0.114 * b;
+          const maxC = Math.max(r, g, b);
+          const minC = Math.min(r, g, b);
+          const sat = maxC > 0 ? (maxC - minC) / maxC : 0;
+          const redness = r - (g + b) * 0.5;
+          if (luma < 142 || sat > 0.19 || redness > 9) continue;
+          const score = luma - redness * 3.2 - sat * 110;
+          candidates.push({ score, rgb: [r, g, b] });
         }
       }
-      if (bestLuma < 150) {
-        return [238, 236, 235];
+
+      if (candidates.length === 0) {
+        return [238, 236, 234];
       }
-      return best;
+      candidates.sort((a, b) => b.score - a.score);
+      // Sample the natural mid-upper clean sclera band (26%-64% percentile)
+      const startIdx = Math.min(candidates.length - 1, Math.floor(candidates.length * 0.26));
+      const endIdx = Math.min(
+        candidates.length,
+        Math.max(startIdx + 4, Math.floor(candidates.length * 0.64)),
+      );
+      let sr = 0;
+      let sg = 0;
+      let sb = 0;
+      let count = 0;
+      for (let i = startIdx; i < endIdx; i++) {
+        const cRGB = candidates[i]!.rgb;
+        sr += cRGB[0];
+        sg += cRGB[1];
+        sb += cRGB[2];
+        count++;
+      }
+      const n = Math.max(1, count);
+      const avgR = sr / n;
+      const avgG = sg / n;
+      const avgB = sb / n;
+      const cleanAvg = (avgG + avgB) * 0.5;
+      return [
+        Math.min(246, Math.round(Math.min(avgR, cleanAvg + 2))),
+        Math.min(246, Math.round(avgG)),
+        Math.min(246, Math.round(avgB)),
+      ];
     };
 
     const skin = avgAt([118, 347, 50, 280, 195]);
     const lip = avgAt([0, 17, 37, 267, 84, 314]);
     const eyelid = avgAt([29, 30, 259, 260, 27, 257]);
     const forehead = avgAt([10, 151, 9]);
-    const scleraRight = sampleBrightestNear(rightPupil[0], rightPupil[1], rightEyeRx);
-    const scleraLeft = sampleBrightestNear(leftPupil[0], leftPupil[1], leftEyeRx);
+    const scleraRight = sampleEyeSclera(RIGHT_EYE_LOOP, rightPupil, rightEyeRx);
+    const scleraLeft = sampleEyeSclera(LEFT_EYE_LOOP, leftPupil, leftEyeRx);
 
     let shirtR = 0;
     let shirtG = 0;
@@ -508,16 +576,21 @@ let visionPromise: Promise<{
   segmenter: unknown;
 }> | null = null;
 
+let visionRetryAfter = 0;
+
 async function getVisionModels() {
   if (lm && fd) {
     return { landmarker: lm, detector: fd, handLandmarker: hl, segmenter: seg };
+  }
+  if (Date.now() < visionRetryAfter) {
+    throw new Error("Vision model cooldown");
   }
   installTfliteConsoleFilter();
   const { FaceDetector, FaceLandmarker, HandLandmarker, ImageSegmenter } =
     await import("@mediapipe/tasks-vision");
 
   const initFromBase = async () => {
-    const fs = await Promise.resolve(visionFileset);
+    const fs = await resolveVisionFileset();
     const [landmarker, detector, handLandmarker, segmenter] = await Promise.all([
       FaceLandmarker.createFromOptions(fs, {
         baseOptions: {
@@ -566,7 +639,16 @@ async function getVisionModels() {
   };
 
   if (!visionPromise) {
-    visionPromise = initFromBase();
+    visionPromise = Promise.race([
+      initFromBase(),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error("Vision model timeout")), 5500),
+      ),
+    ]).catch((err) => {
+      visionPromise = null;
+      visionRetryAfter = Date.now() + 60000;
+      throw err;
+    });
   }
   const res = await visionPromise;
   lm = res.landmarker;
@@ -742,7 +824,7 @@ function buildFacePts(
       ? [landmarks[473]![0], landmarks[473]![1]]
       : (extras?.kp?.leftPupil ?? lEyeShape.center);
 
-  const rIrisR =
+  const rIrisBase =
     landmarks.length >= 478
       ? Math.max(
           0.006,
@@ -751,8 +833,8 @@ function buildFacePts(
             landmarks[469]![1] - landmarks[471]![1],
           ) * 0.52,
         )
-      : Math.max(0.008, rEyeShape.curve.halfW * 0.48);
-  const lIrisR =
+      : Math.max(0.008, rEyeShape.curve.halfW * (stylized ? 0.56 : 0.48));
+  const lIrisBase =
     landmarks.length >= 478
       ? Math.max(
           0.006,
@@ -761,12 +843,14 @@ function buildFacePts(
             landmarks[474]![1] - landmarks[476]![1],
           ) * 0.52,
         )
-      : Math.max(0.008, lEyeShape.curve.halfW * 0.48);
+      : Math.max(0.008, lEyeShape.curve.halfW * (stylized ? 0.56 : 0.48));
+  const rIrisR = stylized ? Math.max(rIrisBase, rEyeShape.curve.halfW * 0.54) : rIrisBase;
+  const lIrisR = stylized ? Math.max(lIrisBase, lEyeShape.curve.halfW * 0.54) : lIrisBase;
 
   const rEyeRx = Math.max(0.012, rEyeShape.curve.halfW / aspect);
-  const rEyeRy = Math.max(0.007, rEyeShape.curve.scaleY * (stylized ? 1.15 : 1.0));
+  const rEyeRy = Math.max(0.007, rEyeShape.curve.scaleY * (stylized ? 1.38 : 1.0));
   const lEyeRx = Math.max(0.012, lEyeShape.curve.halfW / aspect);
-  const lEyeRy = Math.max(0.007, lEyeShape.curve.scaleY * (stylized ? 1.15 : 1.0));
+  const lEyeRy = Math.max(0.007, lEyeShape.curve.scaleY * (stylized ? 1.38 : 1.0));
 
   const chinPt = landmarks[152]!;
   const foreheadPt = landmarks[10]!;
@@ -877,14 +961,34 @@ export async function detectFace(
     const aspect =
       img.naturalWidth > 0 && img.naturalHeight > 0 ? img.naturalWidth / img.naturalHeight : 1;
 
-    const { landmarker, detector, handLandmarker, segmenter } = await getVisionModels();
+    let landmarker: unknown = null;
+    let detector: unknown = null;
+    let handLandmarker: unknown = null;
+    let segmenter: unknown = null;
+    try {
+      const models = await getVisionModels();
+      landmarker = models.landmarker;
+      detector = models.detector;
+      handLandmarker = models.handLandmarker;
+      segmenter = models.segmenter;
+    } catch (modelErr) {
+      console.warn("MediaPipe vision models unavailable, using fallback keypoints", modelErr);
+    }
+
     const detCanvas = toDetectionCanvas(img, 640);
 
     // Stage 1: Direct MediaPipe 468/478-landmark detection
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const r = (landmarker as any).detect(detCanvas);
-    let rawLandmarks = r?.faceLandmarks?.[0] as
-      Array<{ x: number; y: number; z?: number }> | undefined;
+    let rawLandmarks: Array<{ x: number; y: number; z?: number }> | undefined;
+    if (landmarker) {
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const r = (landmarker as any).detect(detCanvas);
+        rawLandmarks = r?.faceLandmarks?.[0] as
+          Array<{ x: number; y: number; z?: number }> | undefined;
+      } catch {
+        rawLandmarks = undefined;
+      }
+    }
 
     let landmarks: Array<[number, number, number]> | null =
       rawLandmarks && rawLandmarks.length >= 468
@@ -944,63 +1048,69 @@ export async function detectFace(
     }
 
     // Stage 2: Tight crop via FaceDetector + rotated multi-angle fallback for tilted/varied perspectives
-    if (!landmarks && detector) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const detRes = (detector as any).detect(detCanvas);
-      const det = detRes?.detections?.[0];
-      const bb = det?.boundingBox;
-      if (bb && bb.width > 8 && bb.height > 8) {
-        const size = Math.max(bb.width, bb.height) * 1.75;
-        const cx = bb.originX + bb.width * 0.5;
-        const cy = bb.originY + bb.height * 0.5;
-        const x0 = Math.max(0, cx - size * 0.5);
-        const y0 = Math.max(0, cy - size * 0.5);
-        const x1 = Math.min(detCanvas.width, cx + size * 0.5);
-        const y1 = Math.min(detCanvas.height, cy + size * 0.5);
-        const cw = Math.max(16, x1 - x0);
-        const ch = Math.max(16, y1 - y0);
-
-        const crop = document.createElement("canvas");
-        crop.width = 448;
-        crop.height = 448;
-        crop.getContext("2d")?.drawImage(detCanvas, x0, y0, cw, ch, 0, 0, 448, 448);
-
+    if (!landmarks && detector && landmarker) {
+      try {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const cropRes = (landmarker as any).detect(crop);
-        rawLandmarks = cropRes?.faceLandmarks?.[0];
-        if (rawLandmarks && rawLandmarks.length >= 468) {
-          landmarks = rawLandmarks.map((pt) => [
-            (x0 + pt.x * cw) / detCanvas.width,
-            (y0 + pt.y * ch) / detCanvas.height,
-            ((pt.z ?? 0) * cw) / detCanvas.width,
-          ]);
-        } else if (det.keypoints?.length >= 4) {
-          const kps = det.keypoints as Array<{ x: number; y: number }>;
-          const rightEye: [number, number] = [kps[0]!.x, kps[0]!.y];
-          const leftEye: [number, number] = [kps[1]!.x, kps[1]!.y];
-          const noseTip: [number, number] = [kps[2]!.x, kps[2]!.y];
-          const mouthCenter: [number, number] = [kps[3]!.x, kps[3]!.y];
-          const rightCheek: [number, number] | undefined = kps[4]
-            ? [kps[4].x, kps[4].y]
-            : undefined;
-          const leftCheek: [number, number] | undefined = kps[5] ? [kps[5].x, kps[5].y] : undefined;
-          visionKp = {
-            rightEye,
-            leftEye,
-            noseTip,
-            mouthCenter,
-            rightCheek,
-            leftCheek,
-            stylized: true,
-          };
-          landmarks = fitCanonicalLandmarks(visionKp, aspect);
-          stylized = true;
+        const detRes = (detector as any).detect(detCanvas);
+        const det = detRes?.detections?.[0];
+        const bb = det?.boundingBox;
+        if (bb && bb.width > 8 && bb.height > 8) {
+          const size = Math.max(bb.width, bb.height) * 1.75;
+          const cx = bb.originX + bb.width * 0.5;
+          const cy = bb.originY + bb.height * 0.5;
+          const x0 = Math.max(0, cx - size * 0.5);
+          const y0 = Math.max(0, cy - size * 0.5);
+          const x1 = Math.min(detCanvas.width, cx + size * 0.5);
+          const y1 = Math.min(detCanvas.height, cy + size * 0.5);
+          const cw = Math.max(16, x1 - x0);
+          const ch = Math.max(16, y1 - y0);
+
+          const crop = document.createElement("canvas");
+          crop.width = 448;
+          crop.height = 448;
+          crop.getContext("2d")?.drawImage(detCanvas, x0, y0, cw, ch, 0, 0, 448, 448);
+
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const cropRes = (landmarker as any).detect(crop);
+          rawLandmarks = cropRes?.faceLandmarks?.[0];
+          if (rawLandmarks && rawLandmarks.length >= 468) {
+            landmarks = rawLandmarks.map((pt) => [
+              (x0 + pt.x * cw) / detCanvas.width,
+              (y0 + pt.y * ch) / detCanvas.height,
+              ((pt.z ?? 0) * cw) / detCanvas.width,
+            ]);
+          } else if (det.keypoints?.length >= 4) {
+            const kps = det.keypoints as Array<{ x: number; y: number }>;
+            const rightEye: [number, number] = [kps[0]!.x, kps[0]!.y];
+            const leftEye: [number, number] = [kps[1]!.x, kps[1]!.y];
+            const noseTip: [number, number] = [kps[2]!.x, kps[2]!.y];
+            const mouthCenter: [number, number] = [kps[3]!.x, kps[3]!.y];
+            const rightCheek: [number, number] | undefined = kps[4]
+              ? [kps[4].x, kps[4].y]
+              : undefined;
+            const leftCheek: [number, number] | undefined = kps[5]
+              ? [kps[5].x, kps[5].y]
+              : undefined;
+            visionKp = {
+              rightEye,
+              leftEye,
+              noseTip,
+              mouthCenter,
+              rightCheek,
+              leftCheek,
+              stylized: true,
+            };
+            landmarks = fitCanonicalLandmarks(visionKp, aspect);
+            stylized = true;
+          }
         }
+      } catch {
+        /* ignore detector fallback error */
       }
     }
 
     // Stage 2b: Rotated canvas attempt (±22°) so heavily tilted heads still lock locally
-    if (!landmarks) {
+    if (!landmarks && landmarker) {
       const sq = Math.max(detCanvas.width, detCanvas.height);
       const rotC = document.createElement("canvas");
       rotC.width = sq;
@@ -1015,25 +1125,29 @@ export async function detectFace(
           rCtx.rotate(rad);
           rCtx.drawImage(detCanvas, -detCanvas.width * 0.5, -detCanvas.height * 0.5);
           rCtx.restore();
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const rr = (landmarker as any).detect(rotC);
-          const rPts = rr?.faceLandmarks?.[0] as
-            Array<{ x: number; y: number; z?: number }> | undefined;
-          if (rPts && rPts.length >= 468) {
-            const cos = Math.cos(-rad);
-            const sin = Math.sin(-rad);
-            landmarks = rPts.map((pt) => {
-              const rx = pt.x * sq - sq * 0.5;
-              const ry = pt.y * sq - sq * 0.5;
-              const ox = rx * cos - ry * sin + detCanvas.width * 0.5;
-              const oy = rx * sin + ry * cos + detCanvas.height * 0.5;
-              return [
-                Math.min(0.995, Math.max(0.005, ox / detCanvas.width)),
-                Math.min(0.995, Math.max(0.005, oy / detCanvas.height)),
-                pt.z ?? 0,
-              ];
-            });
-            break;
+          try {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const rr = (landmarker as any).detect(rotC);
+            const rPts = rr?.faceLandmarks?.[0] as
+              Array<{ x: number; y: number; z?: number }> | undefined;
+            if (rPts && rPts.length >= 468) {
+              const cos = Math.cos(-rad);
+              const sin = Math.sin(-rad);
+              landmarks = rPts.map((pt) => {
+                const rx = pt.x * sq - sq * 0.5;
+                const ry = pt.y * sq - sq * 0.5;
+                const ox = rx * cos - ry * sin + detCanvas.width * 0.5;
+                const oy = rx * sin + ry * cos + detCanvas.height * 0.5;
+                return [
+                  Math.min(0.995, Math.max(0.005, ox / detCanvas.width)),
+                  Math.min(0.995, Math.max(0.005, oy / detCanvas.height)),
+                  pt.z ?? 0,
+                ];
+              });
+              break;
+            }
+          } catch {
+            /* ignore rotation check */
           }
         }
       }
@@ -1049,8 +1163,20 @@ export async function detectFace(
       }
     }
 
+    // Stage 4: Deterministic centered portrait rig fallback so WebGL2 animation still starts cleanly
     if (!landmarks) {
-      return null;
+      const kp: FaceKeypoints = {
+        rightEye: [0.41, 0.38],
+        leftEye: [0.59, 0.38],
+        noseTip: [0.5, 0.46],
+        mouthCenter: [0.5, 0.56],
+        chin: [0.5, 0.68],
+        forehead: [0.5, 0.22],
+        stylized: /anime/i.test(key),
+      };
+      visionKp = kp;
+      landmarks = fitCanonicalLandmarks(kp, aspect);
+      stylized = !!kp.stylized;
     }
 
     // Use MediaPipe hands if detected, otherwise Gemini Vision hands

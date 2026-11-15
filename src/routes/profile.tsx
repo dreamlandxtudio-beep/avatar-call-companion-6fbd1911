@@ -14,6 +14,7 @@ import {
   clearMessages,
   createCustomCharacter,
   deleteCustomCharacter,
+  findCharacterById,
   resizeImage,
   selectCharacter,
   setLocalOnlyMode,
@@ -104,20 +105,21 @@ function ProfilePage() {
   const [urlStatus, setUrlStatus] = useState<"idle" | "online" | "offline">("idle");
   const [urlMessage, setUrlMessage] = useState("");
   const [voiceError, setVoiceError] = useState("");
+  const [voiceTab, setVoiceTab] = useState<"all" | "gemini" | "kokoro" | "system">("all");
 
   useEffect(() => {
     detectWebGPU().then(setHasGPU);
   }, []);
 
   useEffect(() => {
-    const up = () => setVoices(systemVoices(p.language));
+    const up = () => setVoices(systemVoices(p.language, p.gender));
     up();
     if (typeof window !== "undefined" && "speechSynthesis" in window && window.speechSynthesis) {
       window.speechSynthesis.addEventListener?.("voiceschanged", up);
       return () => window.speechSynthesis.removeEventListener?.("voiceschanged", up);
     }
     return undefined;
-  }, [p.language]);
+  }, [p.language, p.gender]);
 
   const checkLiveAvatarUrl = async () => {
     const target = (p.liveAvatarUrl ?? "http://localhost:7860").trim();
@@ -168,8 +170,10 @@ function ProfilePage() {
       p.voice,
       p.language,
       undefined,
-      { localOnly: p.localOnly },
-    ).catch((error) => setVoiceError(error instanceof Error ? error.message : "No se pudo reproducir la voz."));
+      { localOnly: p.localOnly, gender: p.gender },
+    ).catch((error) =>
+      setVoiceError(error instanceof Error ? error.message : "No se pudo reproducir la voz."),
+    );
   };
 
   const selectedModel = getModelOption(
@@ -222,16 +226,19 @@ function ProfilePage() {
 
         <div className="mt-5 flex flex-wrap gap-2">
           {allChars.map((character) => (
-            <div key={character.id} className="inline-flex items-center">
-              <Button
-                variant={p.characterId === character.id ? "default" : "outline"}
-                className="whitespace-nowrap shrink-0"
-                onClick={() => selectCharacter(character.id)}
-              >
-                <AvatarImg src={character.avatar} name={character.name} className="h-5 w-5" />
-                {character.name}
-              </Button>
-            </div>
+            <button
+              key={character.id}
+              type="button"
+              onClick={() => selectCharacter(character.id)}
+              className={`inline-flex h-9 items-center gap-2 whitespace-nowrap shrink-0 rounded-lg border px-3 text-sm font-medium transition-colors ${
+                p.characterId === character.id
+                  ? "border-primary bg-primary text-primary-foreground"
+                  : "border-border bg-card text-foreground hover:bg-secondary"
+              }`}
+            >
+              <AvatarImg src={character.avatar} name={character.name} className="h-5 w-5" />
+              <span>{character.name}</span>
+            </button>
           ))}
         </div>
 
@@ -283,11 +290,10 @@ function ProfilePage() {
             <div className="flex items-start gap-3">
               <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
               <div>
-                <p className="text-sm font-semibold text-foreground">
-                  Procesamiento local
-                </p>
+                <p className="text-sm font-semibold text-foreground">Procesamiento local</p>
                 <p className="mt-0.5 text-xs text-muted-foreground">
-                  Los modelos se descargan en tu dispositivo. La disponibilidad de voz y dictado depende del navegador.
+                  Los modelos se descargan en tu dispositivo. La disponibilidad de voz y dictado
+                  depende del navegador.
                 </p>
               </div>
             </div>
@@ -318,7 +324,21 @@ function ProfilePage() {
           </div>
 
           <div>
-            <label className="mb-1.5 block text-sm text-muted-foreground">Género y voz</label>
+            <div className="mb-1.5 flex items-center justify-between gap-2">
+              <label className="text-sm text-muted-foreground">
+                Género y voces ({GEMINI_VOICES.length + KOKORO_VOICES.length} nuevas)
+              </label>
+              <Button
+                variant="secondary"
+                size="sm"
+                type="button"
+                onClick={testVoice}
+                className="h-9 rounded-xl px-3 text-xs font-extrabold"
+              >
+                <AudioLines className="h-3.5 w-3.5" />
+                <span>Probar voz actual</span>
+              </Button>
+            </div>
             <div className="mb-2.5 grid grid-cols-2 gap-2">
               {(
                 [
@@ -326,21 +346,23 @@ function ProfilePage() {
                   ["male", "Hombre"],
                 ] as const
               ).map(([g, label]) => (
-                <Button
-                  variant="ghost"
+                <button
                   key={g}
                   type="button"
                   onClick={() => setProfile({ gender: g })}
-                  className={`rounded-xl py-2.5 text-sm font-medium transition-colors ${
-                    gender === g ? "bg-primary text-primary-foreground" : "bg-card text-foreground"
+                  className={`min-h-[42px] rounded-xl border py-2.5 text-sm font-bold transition-colors ${
+                    gender === g
+                      ? "border-primary bg-primary text-primary-foreground btn-metallic"
+                      : "border-border bg-card text-foreground hover:bg-secondary"
                   }`}
                 >
                   {label}
-                </Button>
+                </button>
               ))}
             </div>
-            <div className="flex gap-2">
+            <div className="mb-2.5 flex gap-2">
               <select
+                aria-label="Selector rápido de voz"
                 className={field}
                 value={`${p.voice.engine}|${p.voice.id}`}
                 onChange={(e) => void pickVoice(e.target.value)}
@@ -349,12 +371,13 @@ function ProfilePage() {
                   <option value="system|">Operadora · automática local</option>
                   {voices.map((v) => (
                     <option key={v.voiceURI} value={`system|${v.voiceURI}`}>
-                      {v.name}{v.localService ? " · local" : " · en línea"}
+                      {v.name}
+                      {v.localService ? " · local" : " · en línea"}
                     </option>
                   ))}
                 </optgroup>
                 {!p.localOnly && (
-                  <optgroup label="Voces naturales · Gemini">
+                  <optgroup label={`Voces naturales · Gemini (${GEMINI_VOICES.length})`}>
                     {GEMINI_VOICES.map((v) => (
                       <option key={v.id} value={`gemini|${v.id}`}>
                         {v.label}
@@ -362,7 +385,7 @@ function ProfilePage() {
                     ))}
                   </optgroup>
                 )}
-                <optgroup label="Voces locales · Kokoro (EN)">
+                <optgroup label={`Voces locales · Kokoro (${KOKORO_VOICES.length} EN)`}>
                   {KOKORO_VOICES.map((v) => (
                     <option key={v.id} value={`kokoro|${v.id}`}>
                       {v.label}
@@ -370,17 +393,168 @@ function ProfilePage() {
                   ))}
                 </optgroup>
               </select>
-              <Button
-                variant="ghost"
-                type="button"
-                onClick={testVoice}
-                className="rounded-xl bg-secondary px-4"
-                aria-label="Probar voz"
-              >
-                <AudioLines className="h-4 w-4" />
-              </Button>
             </div>
-            {voiceError && <p role="alert" className="text-sm text-destructive">{voiceError}</p>}
+
+            <div className="rounded-xl border border-border bg-card/70 p-3">
+              <div className="filter-tabs-scroll mb-2.5" role="tablist" aria-label="Filtrar voces">
+                {(
+                  [
+                    ["all", "Todas"],
+                    ...(!p.localOnly
+                      ? ([["gemini", `Naturales (${GEMINI_VOICES.length})`]] as const)
+                      : []),
+                    ["kokoro", `Kokoro offline (${KOKORO_VOICES.length})`],
+                    ["system", "Dispositivo"],
+                  ] as const
+                ).map(([tid, label]) => (
+                  <button
+                    key={tid}
+                    type="button"
+                    role="tab"
+                    aria-selected={voiceTab === tid}
+                    onClick={() => setVoiceTab(tid)}
+                    className={`min-h-[36px] shrink-0 whitespace-nowrap rounded-lg px-3 py-1.5 text-xs font-extrabold transition-colors ${
+                      voiceTab === tid
+                        ? "bg-primary text-primary-foreground btn-metallic"
+                        : "bg-secondary/80 text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+
+              <div className="grid max-h-60 gap-2 overflow-y-auto pr-1 sm:grid-cols-2">
+                {!p.localOnly &&
+                  (voiceTab === "all" || voiceTab === "gemini") &&
+                  GEMINI_VOICES.map((v) => {
+                    const active = p.voice.engine === "gemini" && p.voice.id === v.id;
+                    return (
+                      <div
+                        key={`g-${v.id}`}
+                        className={`flex items-center justify-between gap-2 rounded-xl border px-3 py-2 text-xs transition-colors ${
+                          active
+                            ? "border-primary bg-primary/12 text-foreground"
+                            : "border-border bg-background/70 text-foreground/90 hover:border-primary/45"
+                        }`}
+                      >
+                        <button
+                          type="button"
+                          onClick={() => void pickVoice(`gemini|${v.id}`)}
+                          className="min-w-0 flex-1 text-left"
+                        >
+                          <p className="truncate font-black">{v.id}</p>
+                          <p className="truncate text-[11px] font-semibold text-muted-foreground">
+                            {v.label.split("·")[1]?.trim() ?? v.label}
+                          </p>
+                        </button>
+                        <button
+                          type="button"
+                          aria-label={`Escuchar voz ${v.id}`}
+                          onClick={() => {
+                            unlockAudio();
+                            setVoiceError("");
+                            void pickVoice(`gemini|${v.id}`);
+                            void speak(
+                              p.language === "es-ES"
+                                ? `Hola, soy ${p.name} con la voz de ${v.id}.`
+                                : `Hi, I'm ${p.name} speaking as ${v.id}.`,
+                              { engine: "gemini", id: v.id },
+                              p.language,
+                              undefined,
+                              { localOnly: false, gender: v.gender },
+                            ).catch((err) =>
+                              setVoiceError(
+                                err instanceof Error ? err.message : "No se pudo reproducir.",
+                              ),
+                            );
+                          }}
+                          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-secondary text-foreground hover:bg-primary hover:text-primary-foreground"
+                        >
+                          <AudioLines className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    );
+                  })}
+
+                {(voiceTab === "all" || voiceTab === "kokoro") &&
+                  KOKORO_VOICES.map((v) => {
+                    const active = p.voice.engine === "kokoro" && p.voice.id === v.id;
+                    return (
+                      <div
+                        key={`k-${v.id}`}
+                        className={`flex items-center justify-between gap-2 rounded-xl border px-3 py-2 text-xs transition-colors ${
+                          active
+                            ? "border-primary bg-primary/12 text-foreground"
+                            : "border-border bg-background/70 text-foreground/90 hover:border-primary/45"
+                        }`}
+                      >
+                        <button
+                          type="button"
+                          onClick={() => void pickVoice(`kokoro|${v.id}`)}
+                          className="min-w-0 flex-1 text-left"
+                        >
+                          <p className="truncate font-black">{v.label.split("·")[0]?.trim()}</p>
+                          <p className="truncate text-[11px] font-semibold text-muted-foreground">
+                            Kokoro · {v.label.split("·")[1]?.trim() ?? "Local EN"}
+                          </p>
+                        </button>
+                        <button
+                          type="button"
+                          aria-label={`Probar voz ${v.id}`}
+                          onClick={() => {
+                            unlockAudio();
+                            setVoiceError("");
+                            void pickVoice(`kokoro|${v.id}`);
+                            void speak(
+                              `Hello, I am ${p.name}. Nice to meet you.`,
+                              { engine: "kokoro", id: v.id },
+                              "en-US",
+                              undefined,
+                              { localOnly: p.localOnly, gender: v.gender },
+                            ).catch((err) =>
+                              setVoiceError(
+                                err instanceof Error ? err.message : "No se pudo reproducir.",
+                              ),
+                            );
+                          }}
+                          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-secondary text-foreground hover:bg-primary hover:text-primary-foreground"
+                        >
+                          <AudioLines className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    );
+                  })}
+
+                {voiceTab === "system" &&
+                  voices.map((v) => {
+                    const active = p.voice.engine === "system" && p.voice.id === v.voiceURI;
+                    return (
+                      <button
+                        key={v.voiceURI}
+                        type="button"
+                        onClick={() => void pickVoice(`system|${v.voiceURI}`)}
+                        className={`flex items-center justify-between gap-2 rounded-xl border px-3 py-2.5 text-left text-xs transition-colors ${
+                          active
+                            ? "border-primary bg-primary/12 text-foreground"
+                            : "border-border bg-background/70 text-foreground/90 hover:border-primary/45"
+                        }`}
+                      >
+                        <span className="truncate font-bold">{v.name}</span>
+                        <span className="shrink-0 text-[10px] text-muted-foreground">
+                          {v.localService ? "Local" : "Online"}
+                        </span>
+                      </button>
+                    );
+                  })}
+              </div>
+            </div>
+
+            {voiceError && (
+              <p role="alert" className="mt-2 text-sm text-destructive">
+                {voiceError}
+              </p>
+            )}
             {kProg !== null && (
               <p className="mt-1.5 text-xs text-primary">
                 Descargando voz… {Math.round(kProg * 100)}%
@@ -392,19 +566,18 @@ function ProfilePage() {
             <label className="mb-1.5 block text-sm text-muted-foreground">Personalidad</label>
             <div className="mb-2 flex flex-wrap gap-2">
               {PRESETS.map((x) => (
-                <Button
-                  variant="ghost"
+                <button
                   key={x.label}
                   type="button"
                   onClick={() => setProfile({ personality: x.personality, style: x.style })}
-                  className={`rounded-full px-3 py-1 text-xs ${
+                  className={`rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${
                     p.personality === x.personality
-                      ? "bg-primary text-primary-foreground"
-                      : "bg-secondary"
+                      ? "border-primary bg-primary text-primary-foreground"
+                      : "border-border bg-secondary text-foreground hover:bg-secondary/80"
                   }`}
                 >
                   {x.label}
-                </Button>
+                </button>
               ))}
             </div>
             <textarea
@@ -445,17 +618,18 @@ function ProfilePage() {
                   ["en-US", "English"],
                 ] as const
               ).map(([v, l]) => (
-                <Button
-                  variant="ghost"
+                <button
                   key={v}
                   type="button"
                   onClick={() => setProfile({ language: v })}
-                  className={`rounded-xl py-2.5 text-sm font-medium ${
-                    p.language === v ? "bg-primary text-primary-foreground" : "bg-card"
+                  className={`rounded-lg border py-2.5 text-sm font-medium transition-colors ${
+                    p.language === v
+                      ? "border-primary bg-primary text-primary-foreground"
+                      : "border-border bg-card text-foreground hover:bg-secondary"
                   }`}
                 >
                   {l}
-                </Button>
+                </button>
               ))}
             </div>
           </div>
@@ -491,12 +665,63 @@ function ProfilePage() {
           </div>
 
           <DeviceDownloads />
-          <Button asChild variant="secondary" className="w-full"><Link to="/mirror">Probar espejo de expresiones</Link></Button>
-          <details className="rounded-xl border border-border bg-card/60 p-3.5 text-xs">
+          <Button asChild variant="secondary" className="w-full">
+            <Link to="/mirror">Probar espejo de expresiones</Link>
+          </Button>
+          <details className="rounded-xl border border-border bg-card/60 p-3.5 text-xs" open>
             <summary className="cursor-pointer font-medium text-muted-foreground">
               Animación y vídeo
             </summary>
             <div className="mt-3 space-y-3">
+              <div className="flex items-center justify-between gap-3 rounded-lg border border-border bg-background/60 px-3 py-2.5">
+                <div>
+                  <p className="font-medium text-foreground">Fondo desenfocado (modo retrato)</p>
+                  <p className="text-[11px] text-muted-foreground">
+                    Recorta a la persona del fondo reconstruido y aplica bokeh detrás al moverse.
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={p.blurredBackground ? "default" : "secondary"}
+                  aria-pressed={!!p.blurredBackground}
+                  onClick={() => setProfile({ blurredBackground: !p.blurredBackground })}
+                  className="shrink-0"
+                >
+                  {p.blurredBackground ? "Activado" : "Desactivado"}
+                </Button>
+              </div>
+              <div>
+                <p className="mb-2 font-semibold text-foreground">
+                  Modelo de animación facial (Humano vs Anime)
+                </p>
+                <div className="grid grid-cols-3 gap-2">
+                  {(
+                    [
+                      ["auto", "Automático"],
+                      ["human", "Humano realista"],
+                      ["anime", "Anime / 2D"],
+                    ] as const
+                  ).map(([val, label]) => (
+                    <button
+                      key={val}
+                      type="button"
+                      onClick={() => setProfile({ animationStyle: val })}
+                      className={`min-h-[40px] rounded-lg border px-2.5 py-2 text-center text-xs font-bold transition-colors ${
+                        (p.animationStyle ?? "auto") === val
+                          ? "border-primary bg-primary/15 text-foreground"
+                          : "border-border bg-background/60 text-muted-foreground hover:text-foreground"
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+                <p className="mt-1.5 text-[11px] text-muted-foreground">
+                  El modo Humano prioriza realismo ocular, párpados arqueados y dientes reales;
+                  Anime adapta ojos grandes y boca más expresiva en ilustraciones.
+                </p>
+              </div>
               <div className="grid grid-cols-2 gap-2">
                 <Button
                   variant="ghost"
@@ -526,7 +751,8 @@ function ProfilePage() {
               {p.avatarEngine === "liveavatar" && (
                 <div className="space-y-2">
                   <p className="text-muted-foreground">
-                    LiveAvatar necesita NVIDIA CUDA: 80 GB para la versión de una GPU; FP8 admite configuraciones de 48 GB. Iris Xe usa el retrato animado local.
+                    LiveAvatar necesita NVIDIA CUDA: 80 GB para la versión de una GPU; FP8 admite
+                    configuraciones de 48 GB. Iris Xe usa el retrato animado local.
                   </p>
                   <div className="flex gap-2">
                     <input

@@ -43,9 +43,7 @@ export function BrandLogo({ compact = false }: { compact?: boolean | undefined }
           fill="var(--foreground)"
         />
       </svg>
-      {!compact && (
-        <span className="text-[24px] font-black text-foreground">YUME</span>
-      )}
+      {!compact && <span className="text-[24px] font-black text-foreground">YUME</span>}
     </span>
   );
 }

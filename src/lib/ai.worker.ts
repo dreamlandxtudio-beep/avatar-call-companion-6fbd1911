@@ -55,7 +55,11 @@ self.onmessage = async (ev: MessageEvent) => {
         const useGPU = await hasWebGPU();
         let hasF16 = false;
         if (useGPU) {
-          const adapter = await (self.navigator as Navigator & { gpu?: { requestAdapter: () => Promise<{ features: Set<string> } | null> } }).gpu?.requestAdapter();
+          const adapter = await (
+            self.navigator as Navigator & {
+              gpu?: { requestAdapter: () => Promise<{ features: Set<string> } | null> };
+            }
+          ).gpu?.requestAdapter();
           hasF16 = !!adapter?.features.has("shader-f16");
         }
         const createWith = async (gpu: boolean) => {

@@ -1,6 +1,13 @@
 import { z } from "zod";
 import { providerError } from "@/lib/provider-error";
-import { detectAvatarGenderWithGemini, detectFaceKeypointsWithGemini, streamGeminiChat, synthesizeSpeech, transcribeAudio, type ChatHistoryMsg } from "./gemini";
+import {
+  detectAvatarGenderWithGemini,
+  detectFaceKeypointsWithGemini,
+  streamGeminiChat,
+  synthesizeSpeech,
+  transcribeAudio,
+  type ChatHistoryMsg,
+} from "./gemini";
 async function readBody(request: Request) {
   const raw = await request.text();
   if (raw.length > 4_000_000) throw new Error("Solicitud demasiado grande.");
@@ -161,7 +168,10 @@ export async function handleApiFaceLandmarks(request: Request): Promise<Response
         headers: { "Content-Type": "application/json; charset=utf-8" },
       });
     }
-    const result = await detectFaceKeypointsWithGemini({ mimeType: m[1] ?? "image/jpeg", data: m[2] ?? "" });
+    const result = await detectFaceKeypointsWithGemini({
+      mimeType: m[1] ?? "image/jpeg",
+      data: m[2] ?? "",
+    });
     return new Response(JSON.stringify(result ?? { detected: false }), {
       status: 200,
       headers: { "Content-Type": "application/json; charset=utf-8" },
@@ -185,7 +195,10 @@ export async function handleApiAvatarGender(request: Request): Promise<Response>
         headers: { "Content-Type": "application/json; charset=utf-8" },
       });
     }
-    const gender = await detectAvatarGenderWithGemini({ mimeType: m[1] ?? "image/jpeg", data: m[2] ?? "" });
+    const gender = await detectAvatarGenderWithGemini({
+      mimeType: m[1] ?? "image/jpeg",
+      data: m[2] ?? "",
+    });
     return new Response(JSON.stringify({ gender }), {
       status: 200,
       headers: { "Content-Type": "application/json; charset=utf-8" },
@@ -197,4 +210,3 @@ export async function handleApiAvatarGender(request: Request): Promise<Response>
     });
   }
 }
-

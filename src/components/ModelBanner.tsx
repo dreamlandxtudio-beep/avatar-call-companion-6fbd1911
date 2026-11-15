@@ -53,7 +53,7 @@ export function ModelBanner() {
             </span>
             <Button
               onClick={() => loadModel(selected.id).catch(() => {})}
-              className="whitespace-nowrap shrink-0 rounded-full bg-primary px-3.5 py-1.5 text-xs font-medium text-primary-foreground"
+              className="whitespace-nowrap shrink-0 rounded-lg bg-primary px-3.5 py-1.5 text-xs font-medium text-primary-foreground"
             >
               Activar
             </Button>
@@ -62,7 +62,7 @@ export function ModelBanner() {
             aria-label="Seleccionar modelo de IA"
             value={selected.id}
             onChange={(e) => onSelect(e.target.value as ModelId)}
-            className="w-full rounded-xl bg-secondary px-3 py-2 text-xs outline-none ring-ring focus:ring-2"
+            className="w-full rounded-lg bg-secondary px-3 py-2 text-xs outline-none ring-ring focus:ring-2"
           >
             {AI_MODELS.filter((m) => !p.localOnly || !m.cloud).map((m) => (
               <option key={m.id} value={m.id}>
@@ -114,7 +114,7 @@ export function ModelBanner() {
             <Button
               variant="secondary"
               onClick={() => resetModel()}
-              className="whitespace-nowrap shrink-0 rounded-full bg-secondary px-2.5 py-1 text-[11px] text-muted-foreground"
+              className="whitespace-nowrap shrink-0 rounded-lg bg-secondary px-2.5 py-1 text-[11px] text-muted-foreground"
             >
               Cancelar
             </Button>
@@ -132,7 +132,7 @@ export function ModelBanner() {
             <Button
               variant="secondary"
               onClick={() => loadModel(selected.id).catch(() => {})}
-              className="whitespace-nowrap shrink-0 rounded-full bg-secondary px-3 py-1.5 text-xs"
+              className="whitespace-nowrap shrink-0 rounded-lg bg-secondary px-3 py-1.5 text-xs"
             >
               Reintentar
             </Button>

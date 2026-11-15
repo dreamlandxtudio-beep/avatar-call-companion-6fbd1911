@@ -1,4 +1,5 @@
 # Roadmap
+
 - [x] Independent eye rendering, stronger expressions and subtle camera mirroring; eye tessellation holes repaired and signal tests pass.
 - [x] Camera mirror test page with mouth, eyelid, brow, gaze and head controls; verified face detection and camera track cleanup.
 - [x] Device download management and reload reuse for local AI; SmolLM2 inference verified and reload made no external weight requests.
@@ -19,6 +20,7 @@
 - [ ] Monetization waits for pricing and checkout requirements.
 
 ## Current portrait repair
+
 - [x] Replace overlapping face layers with one continuous textured portrait mesh; removed translucent photo transition.
 - [x] Preserve source eyelid/lip texture and specialize human/anime articulation; photographic teeth excluded for drawings.
 - [x] Delay subtle reactions until sustained fresh observations; hold/delay/cooldown tests pass, ordinary mouth/head copying removed.

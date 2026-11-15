@@ -6,19 +6,39 @@ import { voiceProsody } from "./voice-prosody";
 export const GEMINI_VOICES = [
   { id: "Kore", gender: "female" as const, label: "Kore · mujer, cálida y natural" },
   { id: "Zephyr", gender: "female" as const, label: "Zephyr · mujer, alegre y brillante" },
+  { id: "Aoede", gender: "female" as const, label: "Aoede · mujer, melodiosa y dulce" },
+  { id: "Leda", gender: "female" as const, label: "Leda · mujer, juvenil y fresca" },
+  { id: "Sulafat", gender: "female" as const, label: "Sulafat · mujer, serena y elegante" },
+  { id: "Autonoe", gender: "female" as const, label: "Autonoe · mujer, brillante y viva" },
+  { id: "Callirrhoe", gender: "female" as const, label: "Callirrhoe · mujer, suave y tranquila" },
+  { id: "Despina", gender: "female" as const, label: "Despina · mujer, cálida y cercana" },
   { id: "Puck", gender: "male" as const, label: "Puck · hombre, joven y cercano" },
   { id: "Charon", gender: "male" as const, label: "Charon · hombre, sereno y grave" },
   { id: "Fenrir", gender: "male" as const, label: "Fenrir · hombre, enérgico y firme" },
+  { id: "Orus", gender: "male" as const, label: "Orus · hombre, maduro y seguro" },
+  { id: "Algenib", gender: "male" as const, label: "Algenib · hombre, profundo y claro" },
+  { id: "Achird", gender: "male" as const, label: "Achird · hombre, amigable y ligero" },
+  { id: "Gacrux", gender: "female" as const, label: "Gacrux · mujer, expresiva y clara" },
+  { id: "Umbriel", gender: "male" as const, label: "Umbriel · hombre, pausado y reflexivo" },
 ];
 
 export const KOKORO_VOICES = [
-  { id: "af_heart", label: "Heart · mujer, cálida (EN)" },
-  { id: "af_bella", label: "Bella · mujer, expresiva (EN)" },
-  { id: "af_nicole", label: "Nicole · mujer, susurrada (EN)" },
-  { id: "am_michael", label: "Michael · hombre, grave (EN)" },
-  { id: "am_fenrir", label: "Fenrir · hombre, intenso (EN)" },
-  { id: "bf_emma", label: "Emma · mujer británica (EN)" },
-  { id: "bm_george", label: "George · hombre británico (EN)" },
+  { id: "af_heart", gender: "female" as const, label: "Heart · mujer, cálida (EN)" },
+  { id: "af_bella", gender: "female" as const, label: "Bella · mujer, expresiva (EN)" },
+  { id: "af_nova", gender: "female" as const, label: "Nova · mujer, moderna y clara (EN)" },
+  { id: "af_sky", gender: "female" as const, label: "Sky · mujer, dulce y ligera (EN)" },
+  { id: "af_sarah", gender: "female" as const, label: "Sarah · mujer, natural (EN)" },
+  { id: "af_nicole", gender: "female" as const, label: "Nicole · mujer, susurrada (EN)" },
+  { id: "af_aoede", gender: "female" as const, label: "Aoede · mujer, suave (EN)" },
+  { id: "af_kore", gender: "female" as const, label: "Kore · mujer, equilibrada (EN)" },
+  { id: "bf_emma", gender: "female" as const, label: "Emma · mujer británica (EN)" },
+  { id: "bf_isabella", gender: "female" as const, label: "Isabella · mujer británica (EN)" },
+  { id: "am_michael", gender: "male" as const, label: "Michael · hombre, grave (EN)" },
+  { id: "am_fenrir", gender: "male" as const, label: "Fenrir · hombre, intenso (EN)" },
+  { id: "am_adam", gender: "male" as const, label: "Adam · hombre, firme (EN)" },
+  { id: "am_liam", gender: "male" as const, label: "Liam · hombre, joven (EN)" },
+  { id: "bm_george", gender: "male" as const, label: "George · hombre británico (EN)" },
+  { id: "bm_daniel", gender: "male" as const, label: "Daniel · hombre británico (EN)" },
 ];
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -48,14 +68,44 @@ export function loadKokoro(onProgress?: (p: number) => void) {
   return kLoading;
 }
 
-export function systemVoices(lang: string) {
+const FEMALE_VOICE_HINTS =
+  /female|mujer|femenin|helena|elena|sofia|monica|mónica|paulina|laura|lucia|lucía|sabina|paloma|conchita|penelope|serena|aria|jenny|samantha|victoria|karen|ava|allison|google español|google us english/i;
+const MALE_VOICE_HINTS =
+  /male|hombre|masculin|jorge|diego|pablo|carlos|enrique|raul|raúl|alonso|mateo|daniel|alex|thomas|guy|ryan|christopher|davis/i;
+
+export function systemVoices(lang: string, gender?: "female" | "male") {
   if (typeof speechSynthesis === "undefined") return [];
   const all = speechSynthesis.getVoices();
-  const pre = lang.slice(0, 2);
-  return all.filter((v) => v.lang.startsWith(pre)).sort((a, b) => score(b) - score(a));
+  const pre = lang.slice(0, 2).toLowerCase();
+  const matching = all.filter((v) => v.lang.toLowerCase().startsWith(pre));
+  const pool = matching.length > 0 ? matching : all;
+  return [...pool].sort((a, b) => scoreVoice(b, lang, gender) - scoreVoice(a, lang, gender));
 }
-const score = (v: SpeechSynthesisVoice) =>
-  (/natural|neural|premium|enhanced|google|siri/i.test(v.name) ? 2 : 0) + (v.localService ? 4 : 0);
+
+function scoreVoice(v: SpeechSynthesisVoice, lang: string, gender?: "female" | "male"): number {
+  const name = v.name || "";
+  let s = 0;
+  if (/natural|neural|online.*natural|microsoft.*online|google|siri|premium|enhanced/i.test(name)) {
+    s += 10;
+  }
+  if (/espeak|festival|mbrola|compact|android speech|piper/i.test(name)) {
+    s -= 10;
+  }
+  if (v.lang.toLowerCase() === lang.toLowerCase()) {
+    s += 3;
+  } else if (v.lang.toLowerCase().startsWith(lang.slice(0, 2).toLowerCase())) {
+    s += 1;
+  }
+  if (gender === "female") {
+    if (FEMALE_VOICE_HINTS.test(name)) s += 4;
+    if (MALE_VOICE_HINTS.test(name) && !FEMALE_VOICE_HINTS.test(name)) s -= 3;
+  } else if (gender === "male") {
+    if (MALE_VOICE_HINTS.test(name)) s += 4;
+    if (FEMALE_VOICE_HINTS.test(name) && !MALE_VOICE_HINTS.test(name)) s -= 3;
+  }
+  if (!v.localService) s += 1;
+  return s;
+}
 
 let ctx: AudioContext | null = null;
 let analyser: AnalyserNode | null = null;
@@ -293,7 +343,6 @@ async function speakViaGemini(
       if (signal.aborted) return true;
       throw error;
     } finally {
-
       signal.removeEventListener("abort", onParentAbort);
     }
   }
@@ -317,7 +366,7 @@ export async function speak(
   voice: VoiceChoice,
   lang: string,
   emotion?: string,
-  opts?: { localOnly?: boolean | undefined },
+  opts?: { localOnly?: boolean | undefined; gender?: "female" | "male" | undefined },
 ): Promise<void> {
   stopSpeaking();
   const clean = text
@@ -331,15 +380,23 @@ export async function speak(
   speakAbort = ctrl;
 
   if (voice.engine === "gemini" && !opts?.localOnly) {
-    const ok = await speakViaGemini(clean, voice.id || "Kore", lang, ctrl.signal, emotion);
-    if (ok || ctrl.signal.aborted) return;
+    try {
+      const ok = await speakViaGemini(clean, voice.id || "Kore", lang, ctrl.signal, emotion);
+      if (ok || ctrl.signal.aborted) return;
+    } catch (e) {
+      if (ctrl.signal.aborted) return;
+      console.warn("Gemini TTS unavailable, falling back to device speech:", e);
+    }
   }
 
   if (voice.engine === "kokoro") {
     try {
       await loadKokoro();
       if (ctrl.signal.aborted) return;
-      const a = await kokoro.generate(clean, { voice: voice.id || "af_heart", speed: voiceProsody(emotion).rate });
+      const a = await kokoro.generate(clean, {
+        voice: voice.id || "af_heart",
+        speed: voiceProsody(emotion).rate,
+      });
       if (ctrl.signal.aborted) return;
       const c = unlockAudio();
       if (c) {
@@ -349,7 +406,9 @@ export async function speak(
         return;
       }
     } catch (e) {
-      throw new Error(`La voz Kokoro no pudo prepararse. La voz del sistema sigue disponible. ${e instanceof Error ? e.message : ""}`);
+      throw new Error(
+        `La voz Kokoro no pudo prepararse. La voz del sistema sigue disponible. ${e instanceof Error ? e.message : ""}`,
+      );
     }
   }
 
@@ -389,13 +448,13 @@ export async function speak(
       tick();
     };
 
-    // Never pretend to speak when the device cannot start audio.
+    // Never stall forever when device speech synthesis cannot start audio.
     const noStartWatchdog = setTimeout(() => {
       if (!started && !settled) {
         if (typeof speechSynthesis !== "undefined") speechSynthesis.cancel();
-        finish(new Error("La voz del dispositivo no pudo iniciar. Prueba otra voz en Personalizar."));
+        finish();
       }
-    }, 8000);
+    }, 3200);
 
     if (typeof speechSynthesis === "undefined") {
       finish(new Error("Este navegador no dispone de voz del sistema."));
@@ -408,7 +467,9 @@ export async function speak(
     u.rate = prosody.rate;
     u.pitch = prosody.pitch;
     const v =
-      speechSynthesis.getVoices().find((x) => x.voiceURI === voice.id) || systemVoices(lang)[0];
+      (voice.engine === "system" && voice.id
+        ? speechSynthesis.getVoices().find((x) => x.voiceURI === voice.id)
+        : undefined) || systemVoices(lang, opts?.gender)[0];
     if (v) u.voice = v;
 
     u.onstart = () => {
@@ -418,14 +479,22 @@ export async function speak(
     };
     u.onend = () => finish();
     u.onerror = (event) => {
-      if (ctrl.signal.aborted || event.error === "canceled" || event.error === "interrupted") finish();
-      else finish(new Error("No se pudo reproducir la voz del dispositivo. Prueba otra voz en Personalizar."));
+      if (ctrl.signal.aborted || event.error === "canceled" || event.error === "interrupted")
+        finish();
+      else
+        finish(
+          new Error(
+            "No se pudo reproducir la voz del dispositivo. Prueba otra voz en Personalizar.",
+          ),
+        );
     };
 
     try {
       speechSynthesis.speak(u);
     } catch {
-      finish(new Error("El navegador bloqueó la voz. Pulsa Probar voz o vuelve a iniciar la llamada."));
+      finish(
+        new Error("El navegador bloqueó la voz. Pulsa Probar voz o vuelve a iniciar la llamada."),
+      );
     }
   });
 }
@@ -471,6 +540,7 @@ export type ListenOptions = {
   onInterim?: (t: string) => void;
   onStatus?: (s: "listening" | "speech" | "transcribing") => void;
   onLevel?: (lv: number) => void;
+  onLaugh?: () => void;
   localOnly?: boolean | undefined;
 };
 
@@ -518,23 +588,111 @@ async function getMicStream(): Promise<{ stream?: MediaStream; fatalError?: stri
   } catch (err) {
     const name = err instanceof Error ? err.name : "";
     if (
-      name === "NotAllowedError" ||
-      name === "PermissionDeniedError" ||
-      name === "SecurityError"
+      name !== "NotAllowedError" &&
+      name !== "PermissionDeniedError" &&
+      name !== "SecurityError"
     ) {
-      return { fatalError: "not-allowed" };
+      try {
+        const plainStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        activeStream = plainStream;
+        return { stream: plainStream };
+      } catch (retryErr) {
+        const retryName = retryErr instanceof Error ? retryErr.name : "";
+        if (
+          retryName === "NotAllowedError" ||
+          retryName === "PermissionDeniedError" ||
+          retryName === "SecurityError"
+        ) {
+          return { fatalError: "not-allowed" };
+        }
+        return { fatalError: "audio-capture" };
+      }
     }
-    if (name === "NotFoundError" || name === "DevicesNotFoundError") {
-      return { fatalError: "audio-capture" };
-    }
-    return { fatalError: "audio-capture" };
+    return { fatalError: "not-allowed" };
   }
 }
 
 export async function warmMic(): Promise<string | undefined> {
-  if (typeof navigator === "undefined" || typeof MediaRecorder === "undefined") return undefined;
+  if (typeof navigator === "undefined" || !navigator.mediaDevices?.getUserMedia) return undefined;
   const { fatalError } = await getMicStream();
   return fatalError;
+}
+
+/**
+ * Acquires microphone and camera independently in parallel inside the same user gesture
+ * so a missing, busy, or denied camera never prevents microphone use (and vice versa).
+ */
+export async function acquireCallMedia(
+  wantMic: boolean,
+  wantCam: boolean,
+): Promise<{
+  micError?: string;
+  camStream: MediaStream | null;
+  camError?: "not-allowed" | "not-found" | "in-use" | "error";
+}> {
+  if (typeof navigator === "undefined" || !navigator.mediaDevices?.getUserMedia) {
+    return {
+      micError: wantMic ? "not-supported" : undefined,
+      camStream: null,
+      camError: wantCam ? "not-found" : undefined,
+    };
+  }
+
+  const micPromise = wantMic
+    ? getMicStream()
+    : Promise.resolve<{ stream?: MediaStream; fatalError?: string }>({});
+
+  const camPromise = wantCam
+    ? (async (): Promise<{
+        camStream: MediaStream | null;
+        camError?: "not-allowed" | "not-found" | "in-use" | "error";
+      }> => {
+        const attempts: MediaStreamConstraints[] = [
+          {
+            video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } },
+            audio: false,
+          },
+          { video: { facingMode: "user" }, audio: false },
+          { video: true, audio: false },
+        ];
+        let lastErr: unknown;
+        for (const c of attempts) {
+          try {
+            const stream = await navigator.mediaDevices.getUserMedia(c);
+            return { camStream: stream };
+          } catch (err) {
+            lastErr = err;
+            const name = err instanceof Error ? err.name : "";
+            if (
+              name === "NotAllowedError" ||
+              name === "PermissionDeniedError" ||
+              name === "SecurityError"
+            ) {
+              return { camStream: null, camError: "not-allowed" };
+            }
+            if (name === "NotFoundError" || name === "DevicesNotFoundError") {
+              return { camStream: null, camError: "not-found" };
+            }
+          }
+        }
+        const name = lastErr instanceof Error ? lastErr.name : "";
+        return {
+          camStream: null,
+          camError: name === "NotReadableError" || name === "TrackStartError" ? "in-use" : "error",
+        };
+      })()
+    : Promise.resolve<{
+        camStream: MediaStream | null;
+        camError?: "not-allowed" | "not-found" | "in-use" | "error";
+      }>({ camStream: null });
+
+  const [micRes, camRes] = await Promise.all([micPromise, camPromise]);
+
+  return {
+    micError: micRes.fatalError,
+    camStream: camRes.camStream,
+    camError: camRes.camError,
+  };
 }
 
 type SpeechRecInstance = InstanceType<SpeechRecCtor> & { stop?: () => void };
@@ -606,11 +764,13 @@ async function transcribeBlob(
   signal: AbortSignal,
 ): Promise<{ text: string; error?: string }> {
   const form = new FormData();
-  form.append("audio", blob, "speech.webm");
+  const mime = (blob.type || "").toLowerCase();
+  const ext = mime.includes("mp4") ? "mp4" : mime.includes("ogg") ? "ogg" : "webm";
+  form.append("audio", blob, `speech.${ext}`);
   form.append("language", lang);
 
   const timeout = new AbortController();
-  const timer = setTimeout(() => timeout.abort(), 6500);
+  const timer = setTimeout(() => timeout.abort(), 8500);
   const onParentAbort = () => timeout.abort();
   signal.addEventListener("abort", onParentAbort, { once: true });
 
@@ -644,7 +804,14 @@ export async function listen(
 
   if (opts.localOnly && SR()) {
     opts.onStatus?.("listening");
-    return listenBrowserSpeech(lang, opts.onInterim);
+    const srRes = await listenBrowserSpeech(lang, opts.onInterim);
+    if (srRes.fatalError === "not-allowed" || srRes.fatalError === "service-not-allowed") {
+      const micCheck = await getMicStream();
+      if (micCheck.stream) {
+        return { text: "", fatalError: "speech-api-blocked" };
+      }
+    }
+    return srRes;
   }
 
   if (typeof navigator === "undefined" || typeof MediaRecorder === "undefined") {
@@ -654,6 +821,12 @@ export async function listen(
   const { stream, fatalError } = await getMicStream();
   if (!stream) {
     return { text: "", fatalError: fatalError || "audio-capture" };
+  }
+
+  // Ensure AudioContext is awake before attaching analyser (otherwise getByteTimeDomainData reads flat 128 silence)
+  const c = unlockAudio();
+  if (c && c.state === "suspended") {
+    await Promise.race([c.resume().catch(() => {}), new Promise<void>((r) => setTimeout(r, 400))]);
   }
 
   opts.onStatus?.("listening");
@@ -677,15 +850,15 @@ export async function listen(
     let speechFrames = 0;
     let resumeVoiceFrames = 0;
     let silenceMs = 0;
-    let noiseFloor = 0.008;
+    let noiseFloor = 0.005;
     let peakSpeechEnergy = 0;
     const recentEnergies: number[] = [];
 
     let sourceNode: MediaStreamAudioSourceNode | null = null;
     let micAnalyser: AnalyserNode | null = null;
-    const c = unlockAudio();
     if (c) {
       try {
+        if (c.state === "suspended") void c.resume().catch(() => {});
         sourceNode = c.createMediaStreamSource(stream);
         micAnalyser = c.createAnalyser();
         micAnalyser.fftSize = 256;
@@ -737,6 +910,11 @@ export async function listen(
     activeFinishFn = finishNow;
     activeAbortFn = abortNow;
 
+    let laughBursts = 0;
+    let inLaughPulse = false;
+    let laughEmitted = false;
+    let prevVadEnergy = 0;
+
     const vadTimer = setInterval(() => {
       if (aborted || recorder.state !== "recording") return;
       let rms = 0;
@@ -765,6 +943,26 @@ export async function listen(
       recentEnergies.push(speechEnergy);
       if (recentEnergies.length > 5) recentEnergies.shift();
 
+      // Detect rapid rhythmic vocal bursts characteristic of human chuckles/laughter (ha-ha-ha)
+      const pulseHi = Math.max(noiseFloor * 3.1, 0.032);
+      const pulseLo = pulseHi * 0.58;
+      if (!inLaughPulse && speechEnergy > pulseHi && speechEnergy > prevVadEnergy * 1.18) {
+        inLaughPulse = true;
+        laughBursts++;
+        if (
+          !laughEmitted &&
+          laughBursts >= 3 &&
+          speechDetected &&
+          Date.now() - speechStartedAt < 2600
+        ) {
+          laughEmitted = true;
+          opts.onLaugh?.();
+        }
+      } else if (inLaughPulse && speechEnergy < pulseLo) {
+        inLaughPulse = false;
+      }
+      prevVadEnergy = speechEnergy;
+
       if (!speechDetected) {
         if (speechEnergy < noiseFloor) {
           noiseFloor = noiseFloor * 0.6 + speechEnergy * 0.4;
@@ -774,10 +972,10 @@ export async function listen(
         noiseFloor = Math.min(0.028, Math.max(0.005, noiseFloor));
       }
 
-      // Require clear loud voice to start & keep recording; respond immediately when voice stops
-      const startThreshold = Math.max(0.025, noiseFloor * 2.5);
+      // Sensitive adaptive VAD threshold so quiet laptop & phone mics trigger reliably
+      const startThreshold = Math.max(0.01, noiseFloor * 1.85);
       const keepThreshold = speechDetected
-        ? Math.max(0.026, noiseFloor * 2.6, Math.min(0.075, peakSpeechEnergy * 0.44))
+        ? Math.max(0.009, noiseFloor * 1.75, Math.min(0.045, peakSpeechEnergy * 0.36))
         : startThreshold;
 
       if (speechEnergy > keepThreshold) {

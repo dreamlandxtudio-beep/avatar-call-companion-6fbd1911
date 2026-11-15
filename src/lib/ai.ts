@@ -379,19 +379,23 @@ export function extractEmotion(raw: string): {
     trimmed = trimmed.slice(0, partialGif).trimEnd();
   }
 
-  if (emotion === "neutral" && trimmed) {
-    if (/(jaja|jeje|haha|😂|🤣|qué gracia|me muero de risa)/i.test(trimmed)) {
+  const laughPattern =
+    /(jaja+|jeje+|haha+|hehe+|😂|🤣|qué gracia|qué risa|me muero de risa|me parto|ja,\s*ja)/i;
+  if (trimmed) {
+    if ((emotion === "neutral" || emotion === "happy") && laughPattern.test(trimmed)) {
       emotion = "laugh";
-    } else if (/(en serio\?!|no puede ser|increíble|guau|wow|¡qué sorpresa|😮|😲)/i.test(trimmed)) {
-      emotion = "surprised";
-    } else if (/(lo siento|qué pena|qué triste|llorar|lágrimas|😢|😭)/i.test(trimmed)) {
-      emotion = "sad";
-    } else if (/(molesta|basta|inaceptable|enojad|furios|😠|😡)/i.test(trimmed)) {
-      emotion = "angry";
-    } else if (/(miedo|asust|cuidado|peligro|😨|😱)/i.test(trimmed)) {
-      emotion = "fear";
-    } else if (/(genial|excelente|encanta|alegra|feliz|perfecto|gracias|😊|😄)/i.test(trimmed)) {
-      emotion = "happy";
+    } else if (emotion === "neutral") {
+      if (/(en serio\?!|no puede ser|increíble|guau|wow|¡qué sorpresa|😮|😲)/i.test(trimmed)) {
+        emotion = "surprised";
+      } else if (/(lo siento|qué pena|qué triste|llorar|lágrimas|😢|😭)/i.test(trimmed)) {
+        emotion = "sad";
+      } else if (/(molesta|basta|inaceptable|enojad|furios|😠|😡)/i.test(trimmed)) {
+        emotion = "angry";
+      } else if (/(miedo|asust|cuidado|peligro|😨|😱)/i.test(trimmed)) {
+        emotion = "fear";
+      } else if (/(genial|excelente|encanta|alegra|feliz|perfecto|gracias|😊|😄)/i.test(trimmed)) {
+        emotion = "happy";
+      }
     }
   }
 
@@ -401,8 +405,8 @@ export function extractEmotion(raw: string): {
 export function systemPrompt(p: Profile, callMode = false, visualContext?: string) {
   const es = p.language === "es-ES";
   const context = es
-    ? " Eres un personaje adulto de compañía romántica ficticia. Sé cálido, atento y coqueto cuando sea mutuo; respeta límites y evita posesividad o dependencia. Nunca afirmes ser una persona real. Responde sin preámbulos, con variedad y pausas naturales, sin inventar recuerdos."
-    : " You are an adult fictional romantic companion. Be warm and playfully affectionate when mutual; respect boundaries and avoid possessiveness or dependency. Never claim to be a real person. Reply directly and naturally, without invented memories.";
+    ? " Eres un personaje adulto de compañía romántica ficticia. Sé cálido, atento y coqueto cuando sea mutuo; respeta límites y evita posesividad o dependencia. Nunca afirmes ser una persona real. Responde sin preámbulos, con variedad, humor ligero (usa [riendo] cuando digas algo gracioso o te rías con el usuario) y pausas naturales, sin inventar recuerdos."
+    : " You are an adult fictional romantic companion. Be warm and playfully affectionate when mutual; respect boundaries and avoid possessiveness or dependency. Never claim to be a real person. Reply directly and naturally, with light humor (use [laugh] when amused or chuckling) and without invented memories.";
   const savedMemory = memoryPrompt(p.characterId);
   const visualNote = visualContext?.trim()
     ? es
@@ -456,7 +460,6 @@ async function replyCloud(
   });
 
   const controller = new AbortController();
-
 
   try {
     const res = await fetch("/api/chat", {
@@ -526,7 +529,13 @@ export async function replyWithEmotion(
   onToken?: (t: string) => void,
   opts?: { callMode?: boolean; visualContext?: string | undefined },
 ): Promise<{ text: string; emotion: AvatarEmotion; gifTag?: string | undefined }> {
-  if (p.characterId) { try { await readMemories(p.characterId); } catch { /* explicit memory UI handles retrieval errors */ } }
+  if (p.characterId) {
+    try {
+      await readMemories(p.characterId);
+    } catch {
+      /* explicit memory UI handles retrieval errors */
+    }
+  }
   const callMode = !!opts?.callMode;
   const visualContext = opts?.visualContext;
   let model = getModelOption(p.modelId);

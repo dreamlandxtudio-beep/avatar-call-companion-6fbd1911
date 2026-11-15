@@ -10,43 +10,49 @@ export type CloudModelName = "gemini-3.1-flash-lite" | "gemini-4-hydrogen";
 let client: GoogleGenAI | null = null;
 let betaClient: GoogleGenAI | null = null;
 
-function getClient() {
-  const apiKey = process.env["UDC_GOOGLE_AI_STUDIO_API_KEY"]?.trim();
-  if (!apiKey) {
-    throw new Error("La conexión de Google AI Studio no está configurada.");
-  }
-  if (!client) {
-    client = new GoogleGenAI({
+function buildClientConfig(apiVersion?: string) {
+  const connectorKey = process.env["UDC_GOOGLE_AI_STUDIO_API_KEY"]?.trim();
+  if (connectorKey) {
+    return {
       apiKey: "connector-managed",
       httpOptions: {
         baseUrl: "https://connector-gateway.lovable.dev/udc_google_ai_studio",
+        ...(apiVersion ? { apiVersion } : {}),
         headers: {
-          "Authorization": `Bearer ${process.env["LOVABLE_API_KEY"] ?? ""}`,
-          "X-Connection-Api-Key": apiKey,
+          Authorization: `Bearer ${process.env["LOVABLE_API_KEY"] ?? ""}`,
+          "X-Connection-Api-Key": connectorKey,
+          "User-Agent": "aistudio-build",
         },
       },
-    });
+    };
+  }
+
+  const directKey = process.env["GEMINI_API_KEY"]?.trim();
+  if (directKey) {
+    return {
+      apiKey: directKey,
+      httpOptions: {
+        ...(apiVersion ? { apiVersion } : {}),
+        headers: {
+          "User-Agent": "aistudio-build",
+        },
+      },
+    };
+  }
+
+  throw new Error("La conexión de Google AI Studio no está configurada.");
+}
+
+function getClient() {
+  if (!client) {
+    client = new GoogleGenAI(buildClientConfig());
   }
   return client;
 }
 
 function getBetaClient() {
-  const apiKey = process.env["UDC_GOOGLE_AI_STUDIO_API_KEY"]?.trim();
-  if (!apiKey) {
-    throw new Error("La conexión de Google AI Studio no está configurada.");
-  }
   if (!betaClient) {
-    betaClient = new GoogleGenAI({
-      apiKey: "connector-managed",
-      httpOptions: {
-        baseUrl: "https://connector-gateway.lovable.dev/udc_google_ai_studio",
-        apiVersion: "v1beta",
-        headers: {
-          "Authorization": `Bearer ${process.env["LOVABLE_API_KEY"] ?? ""}`,
-          "X-Connection-Api-Key": apiKey,
-        },
-      },
-    });
+    betaClient = new GoogleGenAI(buildClientConfig("v1beta"));
   }
   return betaClient;
 }
@@ -161,20 +167,66 @@ export async function transcribeAudio(opts: {
   return text;
 }
 
-export type GeminiVoiceName = "Kore" | "Zephyr" | "Puck" | "Charon" | "Fenrir";
-const VALID_VOICES = new Set<GeminiVoiceName>(["Kore", "Zephyr", "Puck", "Charon", "Fenrir"]);
-const VOICE_ALIAS: Record<string, GeminiVoiceName> = {
-  Orus: "Charon",
-  Algenib: "Fenrir",
-  Achird: "Puck",
+export type GeminiVoiceName =
+  | "Kore"
+  | "Zephyr"
+  | "Aoede"
+  | "Leda"
+  | "Sulafat"
+  | "Autonoe"
+  | "Callirrhoe"
+  | "Despina"
+  | "Puck"
+  | "Charon"
+  | "Fenrir"
+  | "Orus"
+  | "Algenib"
+  | "Achird"
+  | "Gacrux"
+  | "Umbriel";
+
+type CoreVoiceName = "Kore" | "Zephyr" | "Puck" | "Charon" | "Fenrir";
+const ALL_VOICES = new Set<string>([
+  "Kore",
+  "Zephyr",
+  "Aoede",
+  "Leda",
+  "Sulafat",
+  "Autonoe",
+  "Callirrhoe",
+  "Despina",
+  "Puck",
+  "Charon",
+  "Fenrir",
+  "Orus",
+  "Algenib",
+  "Achird",
+  "Gacrux",
+  "Umbriel",
+]);
+const CORE_ALIAS: Record<string, CoreVoiceName> = {
   Aoede: "Zephyr",
   Leda: "Kore",
   Sulafat: "Kore",
+  Autonoe: "Zephyr",
+  Callirrhoe: "Kore",
+  Despina: "Zephyr",
+  Gacrux: "Zephyr",
+  Orus: "Charon",
+  Algenib: "Fenrir",
+  Achird: "Puck",
+  Umbriel: "Charon",
+  Sadachbia: "Zephyr",
+  Kore: "Kore",
+  Zephyr: "Zephyr",
+  Puck: "Puck",
+  Charon: "Charon",
+  Fenrir: "Fenrir",
 };
 
-function normalizeVoiceName(raw?: string): GeminiVoiceName {
-  if (raw && VALID_VOICES.has(raw as GeminiVoiceName)) return raw as GeminiVoiceName;
-  if (raw && VOICE_ALIAS[raw]) return VOICE_ALIAS[raw]!;
+function normalizeVoiceName(raw?: string): string {
+  if (raw && ALL_VOICES.has(raw)) return raw;
+  if (raw && CORE_ALIAS[raw]) return CORE_ALIAS[raw]!;
   return "Kore";
 }
 
@@ -246,7 +298,8 @@ export async function synthesizeSpeech(opts: {
   const ai = getClient();
   const beta = getBetaClient();
   const isEs = (opts.language ?? "es-ES").startsWith("es");
-  const voiceName = normalizeVoiceName(opts.voiceName);
+  const primaryVoice = normalizeVoiceName(opts.voiceName);
+  const fallbackVoice = CORE_ALIAS[primaryVoice] ?? "Kore";
 
   const style = ttsStyleForEmotion(opts.emotion, isEs, opts.style);
   const cleanText = opts.text.trim();
@@ -258,6 +311,7 @@ export async function synthesizeSpeech(opts: {
     model: "gemini-3.8-flash-lite-tts" | "gemini-3.8-flash-tts",
     text: string,
     withMetadata: boolean,
+    voice: string,
   ) => {
     const part = withMetadata ? { text, speechMetadata: { style } } : { text };
     const response = await clientRef.models.generateContent({
@@ -267,7 +321,7 @@ export async function synthesizeSpeech(opts: {
         responseModalities: ["AUDIO"],
         speechConfig: {
           voiceConfig: {
-            prebuiltVoiceConfig: { voiceName },
+            prebuiltVoiceConfig: { voiceName: voice },
           },
         },
       },
@@ -280,7 +334,19 @@ export async function synthesizeSpeech(opts: {
     return ensureWavBuffer(Buffer.from(base64Audio, "base64"), inline?.mimeType);
   };
 
-  return callTts(beta, "gemini-3.8-flash-lite-tts", cleanText, false);
+  try {
+    return await callTts(beta, "gemini-3.8-flash-lite-tts", expressiveText, true, primaryVoice);
+  } catch {
+    try {
+      return await callTts(beta, "gemini-3.8-flash-lite-tts", cleanText, false, primaryVoice);
+    } catch {
+      try {
+        return await callTts(ai, "gemini-3.8-flash-lite-tts", cleanText, false, fallbackVoice);
+      } catch {
+        return await callTts(beta, "gemini-3.8-flash-tts", cleanText, false, fallbackVoice);
+      }
+    }
+  }
 }
 
 export type VisionHandKeypoints = {

@@ -71,7 +71,7 @@ function ErrorComponent({ error, reset }: ErrorComponentProps) {
           </button>
           <a
             href="/"
-            className="inline-flex items-center justify-center rounded-md border border-input bg-background px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-accent"
+            className="inline-flex items-center justify-center rounded-md border border-input bg-background px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-secondary"
           >
             Ir al inicio
           </a>
@@ -123,7 +123,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { rel: "preconnect", href: "https://fonts.googleapis.com" },
       {
         rel: "stylesheet",
-        href: "https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Nunito:wght@600;700;800;900&family=Nunito+Sans:wght@400;500;600;700;800&display=swap",
+        href: "https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;700&family=Nunito+Sans:wght@600;700;800&family=Nunito:wght@700;800;900&display=swap",
       },
       { rel: "icon", href: "/favicon.svg", type: "image/svg+xml" },
     ],

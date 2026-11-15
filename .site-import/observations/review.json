@@ -1,33 +1,22 @@
 [
   {
     "route": "/",
-    "viewports": [
-      "1280x1800",
-      "390x844"
-    ],
+    "viewports": ["1280x1800", "390x844"],
     "control": "Portrait, character selection, direct call and chat links",
     "status": "passed",
-    "evidence": [
-      "/tmp/browser/avatar/home.png",
-      "/tmp/browser/avatar/phone-settled.png"
-    ],
+    "evidence": ["/tmp/browser/avatar/home.png", "/tmp/browser/avatar/phone-settled.png"],
     "source": "uploaded source, no running source website supplied"
   },
   {
     "route": "/chat",
-    "viewports": [
-      "1280x1800"
-    ],
+    "viewports": ["1280x1800"],
     "control": "Send message and receive Gemini answer",
     "status": "passed",
     "evidence": "/tmp/browser/avatar/chat.png"
   },
   {
     "route": "/call",
-    "viewports": [
-      "1280x1800",
-      "390x844"
-    ],
+    "viewports": ["1280x1800", "390x844"],
     "control": "Start keyboard call, show user camera, end call",
     "status": "passed",
     "evidence": "/tmp/browser/avatar/phone-call.png",

@@ -27,7 +27,9 @@ export type Profile = {
   voice: VoiceChoice;
   modelId: ModelId;
   avatarEngine?: AvatarEngine | undefined;
+  animationStyle?: "auto" | "human" | "anime" | undefined;
   liveAvatarUrl?: string | undefined;
+  blurredBackground?: boolean | undefined;
   localOnly?: boolean | undefined;
   configVersion?: number | undefined;
 };
@@ -42,24 +44,43 @@ export type Msg = {
 const FEMALE_VOICES = new Set([
   "Kore",
   "Zephyr",
-  "af_heart",
-  "af_bella",
-  "af_nicole",
-  "bf_emma",
   "Aoede",
   "Leda",
   "Sulafat",
+  "Autonoe",
+  "Callirrhoe",
+  "Despina",
+  "Erinome",
+  "af_heart",
+  "af_bella",
+  "af_aoede",
+  "af_kore",
+  "af_nicole",
+  "af_nova",
+  "af_sarah",
+  "af_sky",
+  "bf_emma",
+  "bf_isabella",
 ]);
 const MALE_VOICES = new Set([
   "Puck",
   "Charon",
   "Fenrir",
-  "am_michael",
-  "am_fenrir",
-  "bm_george",
   "Orus",
   "Algenib",
   "Achird",
+  "Gacrux",
+  "Umbriel",
+  "Sadachbia",
+  "am_michael",
+  "am_fenrir",
+  "am_puck",
+  "am_echo",
+  "am_onyx",
+  "am_liam",
+  "bm_george",
+  "bm_daniel",
+  "bm_fable",
 ]);
 
 export function defaultVoiceForGender(
@@ -82,7 +103,7 @@ export function defaultVoiceForGender(
 }
 
 const DEFAULT_CHAR = CHARACTERS[0]!;
-const CONFIG_VERSION = 11;
+const CONFIG_VERSION = 13;
 const CUSTOM_CHARS_KEY = "amiga.customCharacters";
 
 const DEFAULT: Profile = {
@@ -97,7 +118,9 @@ const DEFAULT: Profile = {
   voice: { ...DEFAULT_DEVICE_VOICE },
   modelId: "gemini-flash-lite",
   avatarEngine: "mediapipe-mesh",
+  animationStyle: "auto",
   liveAvatarUrl: "http://localhost:7860",
+  blurredBackground: false,
   localOnly: false,
   configVersion: CONFIG_VERSION,
 };
@@ -177,6 +200,24 @@ function ensure() {
     profile.characterId = migrated.id;
   }
 
+  const healAvatarUrl = (url: string | null | undefined, characterId?: string): string => {
+    const builtIn = characterById(characterId);
+    if (builtIn) return builtIn.avatar;
+    const fallback = DEFAULT_CHAR.avatar ?? "/avatars/default.jpg";
+    if (!url || url.includes("/__l5e/")) {
+      return fallback;
+    }
+    return url;
+  };
+
+  if (customCharacters.some((c) => c.avatar?.includes("/__l5e/"))) {
+    customCharacters = customCharacters.map((c) => ({
+      ...c,
+      avatar: healAvatarUrl(c.avatar, c.id),
+    }));
+    saveCustomCharacters(customCharacters);
+  }
+
   if (!profile.configVersion || profile.configVersion < CONFIG_VERSION) {
     const isBuiltInNonCustom = !profile.characterId || !!characterById(profile.characterId);
     const shouldResetDefault =
@@ -192,24 +233,38 @@ function ensure() {
         language: profile.language ?? "es-ES",
         avatarEngine: profile.avatarEngine ?? "mediapipe-mesh",
         liveAvatarUrl: profile.liveAvatarUrl ?? "http://localhost:7860",
+        blurredBackground: profile.blurredBackground ?? false,
         localOnly: profile.localOnly ?? false,
         configVersion: CONFIG_VERSION,
       };
     } else {
       const gender: AvatarGender =
         profile.gender ?? (profile.avatar?.includes("male.jpg") ? "male" : "female");
+      const builtIn = characterById(profile.characterId);
       profile = {
         ...profile,
         characterId: profile.characterId ?? DEFAULT_CHAR.id,
+        avatar: builtIn ? builtIn.avatar : healAvatarUrl(profile.avatar, profile.characterId),
         gender,
         modelId: profile.modelId ?? "gemini-flash-lite",
         avatarEngine: profile.avatarEngine ?? "mediapipe-mesh",
         liveAvatarUrl: profile.liveAvatarUrl ?? "http://localhost:7860",
+        blurredBackground: profile.blurredBackground ?? false,
         localOnly: profile.localOnly ?? false,
-        voice: { ...DEFAULT_DEVICE_VOICE },
+        voice: profile.voice ?? { ...DEFAULT_DEVICE_VOICE },
         configVersion: CONFIG_VERSION,
       };
     }
+    try {
+      localStorage.setItem("amiga.profile", JSON.stringify(profile));
+    } catch {
+      /* ignore */
+    }
+  } else if (profile.avatar?.includes("/__l5e/")) {
+    profile = {
+      ...profile,
+      avatar: healAvatarUrl(profile.avatar, profile.characterId),
+    };
     try {
       localStorage.setItem("amiga.profile", JSON.stringify(profile));
     } catch {

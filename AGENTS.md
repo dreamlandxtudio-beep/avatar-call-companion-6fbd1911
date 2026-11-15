@@ -1,4 +1,5 @@
 <!-- LOVABLE:BEGIN -->
+
 > [!IMPORTANT]
 > This project is connected to [Lovable](https://lovable.dev). Avoid rewriting
 > published git history — force pushing, or rebasing/amending/squashing commits
@@ -27,9 +28,11 @@ use the editor.
   `LOVABLE_API_KEY`. When Lovable does not provide one, users can bring their
   own key and store it in Secrets.
 - **Secrets.** Lovable manages them. Do not put secret values in the repo.
+
 <!-- LOVABLE:END -->
 
 ## App architecture
+
 - Preserve target TanStack bootstrap and generated Cloud integration modules when importing code, because they own deployment and authentication.
 - Keep GPU avatar inference external; portrait deformation is only a local preview, because Worker hosting cannot execute CUDA models.
 - Store explicit character memories in Cloud with owner-scoped policies; never treat face-expression estimates as established emotions.

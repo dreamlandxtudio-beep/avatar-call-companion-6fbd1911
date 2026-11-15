@@ -1,4 +1,4 @@
-import { visionFileset } from "./vision-runtime";
+import { resolveVisionFileset } from "./vision-runtime";
 // Client-side user webcam capture & MediaPipe real-time facial expression + gaze/head-turn tracking.
 import type { AvatarEmotion } from "./ai";
 import { expressionFromSignals } from "./face-signals";
@@ -13,6 +13,11 @@ export type UserFaceObservation = {
   mouthFrown?: number;
   browInnerUp?: number;
   blink?: number;
+  blinkLeft?: number;
+  blinkRight?: number;
+  smileLeft?: number;
+  smileRight?: number;
+  mouthSkewX?: number;
   eyeWide?: number;
   eyeSquint?: number;
   noseSneer?: number;
@@ -28,18 +33,32 @@ export type UserFaceObservation = {
 
 export type CameraStartResult =
   | { stream: MediaStream; error?: undefined }
-  | { stream: null; error: "not-allowed" | "not-found" | "error" };
+  | { stream: null; error: "not-allowed" | "not-found" | "in-use" | "error" };
 
 export function canUseCamera(): boolean {
   return typeof navigator !== "undefined" && !!navigator.mediaDevices?.getUserMedia;
+}
+
+function classifyMediaError(err: unknown): "not-allowed" | "not-found" | "in-use" | "error" {
+  const name = err instanceof Error ? err.name : "";
+  if (name === "NotAllowedError" || name === "PermissionDeniedError" || name === "SecurityError") {
+    return "not-allowed";
+  }
+  if (name === "NotReadableError" || name === "TrackStartError") {
+    return "in-use";
+  }
+  if (name === "NotFoundError" || name === "DevicesNotFoundError") {
+    return "not-found";
+  }
+  return "error";
 }
 
 export async function startUserCamera(): Promise<CameraStartResult> {
   if (!canUseCamera()) {
     return { stream: null, error: "not-found" };
   }
-  try {
-    const stream = await navigator.mediaDevices.getUserMedia({
+  const attempts: MediaStreamConstraints[] = [
+    {
       video: {
         facingMode: "user",
         width: { ideal: 640 },
@@ -47,26 +66,24 @@ export async function startUserCamera(): Promise<CameraStartResult> {
         frameRate: { ideal: 24, max: 30 },
       },
       audio: false,
-    });
-    return { stream };
-  } catch (err) {
-    const name = err instanceof Error ? err.name : "";
-    if (
-      name === "NotAllowedError" ||
-      name === "PermissionDeniedError" ||
-      name === "SecurityError"
-    ) {
-      return { stream: null, error: "not-allowed" };
+    },
+    { video: { facingMode: "user" }, audio: false },
+    { video: true, audio: false },
+  ];
+  let lastErr: unknown;
+  for (const constraints of attempts) {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      return { stream };
+    } catch (err) {
+      lastErr = err;
+      const classified = classifyMediaError(err);
+      if (classified === "not-allowed" || classified === "not-found") {
+        return { stream: null, error: classified };
+      }
     }
-    if (
-      name === "NotFoundError" ||
-      name === "DevicesNotFoundError" ||
-      name === "OverconstrainedError"
-    ) {
-      return { stream: null, error: "not-found" };
-    }
-    return { stream: null, error: "error" };
   }
+  return { stream: null, error: classifyMediaError(lastErr) };
 }
 
 export function stopUserCamera(stream: MediaStream | null | undefined) {
@@ -92,7 +109,7 @@ export async function ensureUserFaceTracker(): Promise<boolean> {
     videoLandmarkerPromise = (async () => {
       const { FaceLandmarker } = await import("@mediapipe/tasks-vision");
       const init = async () => {
-        const fs = await Promise.resolve(visionFileset);
+        const fs = await resolveVisionFileset();
         return FaceLandmarker.createFromOptions(fs, {
           baseOptions: {
             modelAssetPath:
@@ -204,7 +221,14 @@ export function analyzeUserVideoFrame(
     const gazeX = clamp((lookLeftRaw - lookRightRaw) * 1.4, -1, 1);
     const gazeY = clamp((lookUp - lookDown) * 1.4, -1, 1);
 
-    const signal = expressionFromSignals(smile, mouthOpen, browFurrow, mouthFrown, bs("browInnerUp"), eyeWide);
+    const signal = expressionFromSignals(
+      smile,
+      mouthOpen,
+      browFurrow,
+      mouthFrown,
+      bs("browInnerUp"),
+      eyeWide,
+    );
     const emotion = signal.emotion;
     const moodEs = signal.label;
 
@@ -222,16 +246,31 @@ export function analyzeUserVideoFrame(
     const labelEs = `${moodEs} · ${dirEs}`;
     const contextPrompt = `Se observan rasgos faciales compatibles con ${moodEs.toLowerCase()}, ${dirEs}. No establecen su emoción real: pregunta si es relevante.`;
 
+    const smileLeft = bs("mouthSmileLeft");
+    const smileRight = bs("mouthSmileRight");
+    const blinkLeft = bs("eyeBlinkLeft");
+    const blinkRight = bs("eyeBlinkRight");
+    const mouthSkewX = clamp(
+      bs("mouthRight") - bs("mouthLeft") + (smileRight - smileLeft) * 0.45,
+      -1,
+      1,
+    );
+
     return {
       detected: true,
       emotion,
       smile,
+      smileLeft,
+      smileRight,
+      mouthSkewX,
       browFurrow,
       browRaise,
       mouthOpen,
       mouthFrown,
       browInnerUp: bs("browInnerUp"),
-      blink: (bs("eyeBlinkLeft") + bs("eyeBlinkRight")) * 0.5,
+      blink: (blinkLeft + blinkRight) * 0.5,
+      blinkLeft,
+      blinkRight,
       eyeWide,
       eyeSquint: (bs("eyeSquintLeft") + bs("eyeSquintRight")) * 0.5,
       noseSneer: (bs("noseSneerLeft") + bs("noseSneerRight")) * 0.5,
