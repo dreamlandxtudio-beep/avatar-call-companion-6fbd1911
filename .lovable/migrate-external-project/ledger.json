@@ -1,0 +1,107 @@
+[
+  {
+    "capability": "code",
+    "source": "uploaded ZIP",
+    "outcome": "migrate",
+    "status": "in_progress",
+    "next_action": "Import source without generated files or secrets"
+  },
+  {
+    "capability": "schema",
+    "source": "browser local storage",
+    "outcome": "migrate",
+    "status": "in_progress",
+    "next_action": "Create private Cloud memory storage"
+  },
+  {
+    "capability": "records",
+    "source": "No export",
+    "outcome": "preserve",
+    "status": "pending",
+    "next_action": "Existing browser conversations were not included"
+  },
+  {
+    "capability": "auth identities",
+    "source": "No account system detected",
+    "outcome": "new",
+    "status": "in_progress",
+    "next_action": "Enable optional accounts for private memory"
+  },
+  {
+    "capability": "authorization",
+    "source": "No existing roles",
+    "outcome": "new",
+    "status": "in_progress",
+    "next_action": "Scope memory to verified user"
+  },
+  {
+    "capability": "uploaded file bytes",
+    "source": "Bundled portraits",
+    "outcome": "migrate",
+    "status": "in_progress",
+    "next_action": "Publish bundled images through asset pointers"
+  },
+  {
+    "capability": "external providers",
+    "source": "Google Gemini / Kokoro / ONNX",
+    "outcome": "preserve",
+    "status": "pending",
+    "next_action": "Configure Gemini securely and verify voice/chat"
+  },
+  {
+    "capability": "public endpoints",
+    "source": "Source /api/chat /tts /transcribe /face-landmarks /avatar-gender",
+    "outcome": "migrate",
+    "status": "pending",
+    "next_action": "Restore compatible server routes"
+  },
+  {
+    "capability": "callbacks",
+    "source": "None detected",
+    "outcome": "absent",
+    "status": "verified",
+    "next_action": "None"
+  },
+  {
+    "capability": "webhooks",
+    "source": "None detected",
+    "outcome": "absent",
+    "status": "verified",
+    "next_action": "None"
+  },
+  {
+    "capability": "schedules",
+    "source": "None detected",
+    "outcome": "absent",
+    "status": "verified",
+    "next_action": "None"
+  },
+  {
+    "capability": "secrets",
+    "source": "GEMINI_API_KEY in server code",
+    "outcome": "preserve",
+    "status": "pending",
+    "next_action": "Secure connection required"
+  },
+  {
+    "capability": "LiveAvatar",
+    "source": "Status check and still portrait only",
+    "outcome": "repair",
+    "status": "blocked",
+    "next_action": "Provide deployed GPU inference service and documented streaming API"
+  },
+  {
+    "capability": "cutover",
+    "source": "Not published",
+    "outcome": "pending",
+    "status": "pending",
+    "next_action": "Publish after verification"
+  },
+  {
+    "capability": "verification",
+    "source": "Not run",
+    "outcome": "pending",
+    "status": "pending",
+    "next_action": "Check routes, camera, animation and private memory"
+  }
+]

@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "asset_id": "bcc17553-3cd4-44e2-80f3-ac3e8940ac59",
+  "project_id": "aa87d054-e006-41cf-9659-65eb8faa035b",
+  "url": "/__l5e/assets-v1/bcc17553-3cd4-44e2-80f3-ac3e8940ac59/vision_wasm_nosimd_internal.wasm",
+  "r2_key": "a/v1/aa87d054-e006-41cf-9659-65eb8faa035b/bcc17553-3cd4-44e2-80f3-ac3e8940ac59/vision_wasm_nosimd_internal.wasm",
+  "original_filename": "vision_wasm_nosimd_internal.wasm",
+  "size": 10647962,
+  "content_type": "application/wasm",
+  "created_at": "2026-11-15T16:26:05Z"
+}

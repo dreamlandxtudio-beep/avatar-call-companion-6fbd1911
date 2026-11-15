@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <defs>
+    <linearGradient id="yume-fav" x1="8" y1="8" x2="56" y2="56" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#fafafa" />
+      <stop offset="55%" stop-color="#d4d4d4" />
+      <stop offset="100%" stop-color="#737373" />
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="16" fill="#0d0d0d" />
+  <path
+    d="M32 10.5C19.3 10.5 9 20 9 31.7C9 37.6 11.6 42.9 15.8 46.7L12.8 55.4L22.7 51.3C25.6 52.3 28.7 52.9 32 52.9C44.7 52.9 55 43.4 55 31.7C55 20 44.7 10.5 32 10.5Z"
+    fill="#141414"
+    stroke="url(#yume-fav)"
+    stroke-width="3.6"
+    stroke-linejoin="round"
+  />
+  <path
+    d="M31.6 20.2C25.4 20.7 20.6 25.9 20.9 32.2C21.2 38.5 26.5 43.3 32.8 43.1C36.2 42.9 39.2 41.3 41.1 38.8C35.9 39.5 31.2 35.8 30.6 30.6C30.2 26.8 31.9 23.4 34.7 21.2C33.7 20.6 32.6 20.1 31.6 20.2Z"
+    fill="url(#yume-fav)"
+  />
+  <path
+    d="M40.3 20.8L41.7 24.7L45.6 26.1L41.7 27.5L40.3 31.4L38.9 27.5L35 26.1L38.9 24.7L40.3 20.8Z"
+    fill="#ffffff"
+  />
+</svg>
