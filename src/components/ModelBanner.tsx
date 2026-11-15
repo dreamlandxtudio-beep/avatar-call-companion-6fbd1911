@@ -8,6 +8,7 @@ import {
   useAIState,
 } from "@/lib/ai";
 import { setProfile, useProfile, type ModelId } from "@/lib/store";
+import { Button } from "./ui/button";
 
 export function ModelBanner() {
   const s = useAIState();
@@ -21,6 +22,9 @@ export function ModelBanner() {
   const selected = getModelOption(
     p.localOnly && getModelOption(p.modelId).cloud ? "qwen25-0.5b" : p.modelId,
   );
+  useEffect(() => {
+    if (!selected.cloud && s.status === "idle") void loadModel(selected.id).catch(() => {});
+  }, [selected.id, selected.cloud, s.status]);
   if (selected.cloud) return null;
 
   const estMB = hasGPU ? selected.gpuMB : selected.cpuMB;
@@ -47,12 +51,12 @@ export function ModelBanner() {
             <span className="text-xs text-muted-foreground tabular-nums">
               IA gratuita en tu dispositivo · ~{estMB} MB
             </span>
-            <button
+            <Button
               onClick={() => loadModel(selected.id).catch(() => {})}
               className="whitespace-nowrap shrink-0 rounded-full bg-primary px-3.5 py-1.5 text-xs font-medium text-primary-foreground"
             >
               Activar
-            </button>
+            </Button>
           </div>
           <select
             aria-label="Seleccionar modelo de IA"
@@ -107,12 +111,13 @@ export function ModelBanner() {
                 </option>
               ))}
             </select>
-            <button
+            <Button
+              variant="secondary"
               onClick={() => resetModel()}
               className="whitespace-nowrap shrink-0 rounded-full bg-secondary px-2.5 py-1 text-[11px] text-muted-foreground"
             >
               Cancelar
-            </button>
+            </Button>
           </div>
         </div>
       )}
@@ -124,12 +129,13 @@ export function ModelBanner() {
               No se pudo cargar {getModelOption(s.modelId).name}. Prueba Gemini (Nube) o uno más
               liviano.
             </span>
-            <button
+            <Button
+              variant="secondary"
               onClick={() => loadModel(selected.id).catch(() => {})}
               className="whitespace-nowrap shrink-0 rounded-full bg-secondary px-3 py-1.5 text-xs"
             >
               Reintentar
-            </button>
+            </Button>
           </div>
           <select
             aria-label="Elegir otro modelo de IA"

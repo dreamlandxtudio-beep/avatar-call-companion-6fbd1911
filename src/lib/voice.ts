@@ -38,6 +38,9 @@ export function loadKokoro(onProgress?: (p: number) => void) {
         if (p.status === "progress" && p.total) onProgress?.(p.loaded / p.total);
       },
     });
+    // Load the voice bank too, not just the neural weights, so the first reply works offline.
+    await kokoro.generate("Hello.", { voice: "af_heart" });
+    await kokoro.generate("Hello.", { voice: "am_michael" });
   })().catch((e) => {
     kLoading = null;
     throw e;

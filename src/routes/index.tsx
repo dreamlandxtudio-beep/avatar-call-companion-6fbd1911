@@ -243,8 +243,8 @@ function Home() {
                       {character.tagline}
                     </p>
 
-                    <div className="mt-2.5 flex items-center gap-2">
-                      <Button asChild size="sm" className="h-8 whitespace-nowrap shrink-0 px-3">
+                    <div className="mt-2.5 flex flex-wrap items-center gap-2">
+                      <Button asChild size="sm" className="h-8 whitespace-nowrap shrink-0 px-2.5">
                         <Link to="/call" onClick={() => selectCharacter(character.id)}>
                           <Video className="h-3.5 w-3.5" />
                           <span>Llamar</span>
@@ -254,7 +254,7 @@ function Home() {
                         asChild
                         variant="secondary"
                         size="sm"
-                        className="h-8 whitespace-nowrap shrink-0 px-3"
+                        className="h-8 whitespace-nowrap shrink-0 px-2.5"
                       >
                         <Link to="/chat" onClick={() => selectCharacter(character.id)}>
                           <MessageSquareText className="h-3.5 w-3.5" />
