@@ -1,6 +1,7 @@
 import { visionFileset } from "./vision-runtime";
 // Client-side user webcam capture & MediaPipe real-time facial expression + gaze/head-turn tracking.
 import type { AvatarEmotion } from "./ai";
+import { expressionFromSignals } from "./face-signals";
 
 export type UserFaceObservation = {
   detected: boolean;
@@ -9,6 +10,13 @@ export type UserFaceObservation = {
   browFurrow: number;
   browRaise: number;
   mouthOpen: number;
+  mouthFrown?: number;
+  browInnerUp?: number;
+  blink?: number;
+  eyeWide?: number;
+  eyeSquint?: number;
+  noseSneer?: number;
+  headRoll?: number;
   headYaw: number; // -1 (looking left on screen) to +1 (looking right on screen)
   headPitch: number; // -1 (looking down) to +1 (looking up)
   gazeX: number; // -1 (eyes looking left) to +1 (eyes looking right)
@@ -196,27 +204,9 @@ export function analyzeUserVideoFrame(
     const gazeX = clamp((lookLeftRaw - lookRightRaw) * 1.4, -1, 1);
     const gazeY = clamp((lookUp - lookDown) * 1.4, -1, 1);
 
-    let emotion: AvatarEmotion = "neutral";
-    let moodEs = "Expresión tranquila";
-    if (mouthOpen > 0.34 && smile > 0.4) {
-      emotion = "laugh";
-      moodEs = "Riéndose";
-    } else if (smile > 0.34) {
-      emotion = "happy";
-      moodEs = "Sonriendo";
-    } else if (browFurrow > 0.32 && smile < 0.22) {
-      emotion = "angry";
-      moodEs = "Ceño fruncido / molesto";
-    } else if (mouthFrown > 0.26 || (browRaise > 0.34 && browFurrow > 0.16 && smile < 0.16)) {
-      emotion = "sad";
-      moodEs = "Pensativo / triste";
-    } else if (browRaise > 0.42 && eyeWide > 0.22 && mouthOpen > 0.16) {
-      emotion = "surprised";
-      moodEs = "Sorprendido";
-    } else if (eyeWide > 0.36 && browRaise > 0.34 && browFurrow > 0.14) {
-      emotion = "fear";
-      moodEs = "Tenso / alerta";
-    }
+    const signal = expressionFromSignals(smile, mouthOpen, browFurrow, mouthFrown, bs("browInnerUp"), eyeWide);
+    const emotion = signal.emotion;
+    const moodEs = signal.label;
 
     let dirEs = "mirando al frente";
     if (headYaw < -0.26 || gazeX < -0.35) {
@@ -239,6 +229,13 @@ export function analyzeUserVideoFrame(
       browFurrow,
       browRaise,
       mouthOpen,
+      mouthFrown,
+      browInnerUp: bs("browInnerUp"),
+      blink: (bs("eyeBlinkLeft") + bs("eyeBlinkRight")) * 0.5,
+      eyeWide,
+      eyeSquint: (bs("eyeSquintLeft") + bs("eyeSquintRight")) * 0.5,
+      noseSneer: (bs("noseSneerLeft") + bs("noseSneerRight")) * 0.5,
+      headRoll: clamp(Math.atan2(lEye.y - rEye.y, lEye.x - rEye.x), -0.45, 0.45),
       headYaw,
       headPitch,
       gazeX,
