@@ -1,4 +1,7 @@
 # Roadmap
+- [ ] Default device speech without a shared AI voice quota; verify voice playback and error states.
+- [ ] Keep local portrait animation visible in external-studio mode and bound rendering cost on integrated GPUs/phones.
+- [ ] Real LiveAvatar on the user's Iris Xe is blocked: CUDA and sufficient dedicated VRAM are unavailable.
 - [x] Import the uploaded app and preserve its characters, chat, calls and settings.
 - [x] Repair portrait deformation, rendering, camera cleanup, call navigation and visible error handling.
 - [ ] Private editable memories implemented; verification requires a signed-up user.

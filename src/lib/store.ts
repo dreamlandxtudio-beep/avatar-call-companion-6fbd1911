@@ -1,5 +1,6 @@
 import { useSyncExternalStore } from "react";
 import { CHARACTERS, characterById, type CharacterDef } from "./characters";
+import { DEFAULT_DEVICE_VOICE } from "./avatar-device";
 
 export type VoiceChoice = { engine: "gemini" | "kokoro" | "system"; id: string };
 export type AvatarGender = "female" | "male";
@@ -74,10 +75,10 @@ export function defaultVoiceForGender(
   }
   if (gender === "male") {
     if (current && (current.engine === "system" || MALE_VOICES.has(current.id))) return current;
-    return { engine: "gemini", id: "Charon" };
+    return { ...DEFAULT_DEVICE_VOICE };
   }
   if (current && (current.engine === "system" || FEMALE_VOICES.has(current.id))) return current;
-  return { engine: "gemini", id: "Kore" };
+  return { ...DEFAULT_DEVICE_VOICE };
 }
 
 const VOICE_REMAP: Record<string, string> = {
@@ -90,7 +91,7 @@ const VOICE_REMAP: Record<string, string> = {
 };
 
 const DEFAULT_CHAR = CHARACTERS[0]!;
-const CONFIG_VERSION = 10;
+const CONFIG_VERSION = 11;
 const CUSTOM_CHARS_KEY = "amiga.customCharacters";
 
 const DEFAULT: Profile = {
@@ -102,7 +103,7 @@ const DEFAULT: Profile = {
   backstory: DEFAULT_CHAR.backstory,
   style: DEFAULT_CHAR.style,
   language: "es-ES",
-  voice: DEFAULT_CHAR.voice,
+  voice: { ...DEFAULT_DEVICE_VOICE },
   modelId: "gemini-flash-lite",
   avatarEngine: "mediapipe-mesh",
   liveAvatarUrl: "http://localhost:7860",
@@ -218,7 +219,7 @@ function ensure() {
         avatarEngine: profile.avatarEngine ?? "mediapipe-mesh",
         liveAvatarUrl: profile.liveAvatarUrl ?? "http://localhost:7860",
         localOnly: profile.localOnly ?? false,
-        voice: defaultVoiceForGender(gender, remappedVoice, profile.localOnly),
+        voice: { ...DEFAULT_DEVICE_VOICE },
         configVersion: CONFIG_VERSION,
       };
     }
@@ -261,10 +262,7 @@ export function selectCharacter(id: string) {
   ensure();
   const ch = findCharacterById(id);
   if (!ch) return;
-  const nextVoice =
-    profile.localOnly && ch.voice.engine === "gemini"
-      ? { engine: "system" as const, id: "" }
-      : ch.voice;
+  const nextVoice = { ...DEFAULT_DEVICE_VOICE };
   profile = {
     ...profile,
     characterId: ch.id,
