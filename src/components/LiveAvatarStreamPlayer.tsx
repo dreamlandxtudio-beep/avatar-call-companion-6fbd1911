@@ -5,8 +5,6 @@ import { Button } from "./ui/button";
 
 export function LiveAvatarStreamPlayer({
   serverUrl,
-  name,
-  fallbackPhoto,
 }: {
   serverUrl?: string | undefined;
   active: boolean;
@@ -40,8 +38,7 @@ export function LiveAvatarStreamPlayer({
   }, [safeUrl]);
 
   return (
-    <div className="absolute inset-0 flex flex-col bg-background">
-      <img src={fallbackPhoto} alt={name} className="min-h-0 flex-1 object-cover object-top" />
+    <div className="absolute inset-x-0 bottom-0 flex flex-col">
       <div className="space-y-3 border-t border-border bg-card/90 p-4 text-center backdrop-blur-md">
         <p className="text-sm font-medium text-foreground">
           Estudio externo ·{" "}
@@ -55,7 +52,7 @@ export function LiveAvatarStreamPlayer({
         </p>
         <p className="text-xs text-muted-foreground">
           {detail ||
-            "El retrato es estático mientras no haya una sesión de vídeo."}
+            "Animación local activa; vídeo LiveAvatar no conectado."}
         </p>
         <div className="flex flex-wrap justify-center gap-2">
           <Button onClick={() => setProfile({ avatarEngine: "mediapipe-mesh" })}>

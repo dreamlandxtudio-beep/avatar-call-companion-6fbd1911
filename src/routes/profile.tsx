@@ -102,6 +102,7 @@ function ProfilePage() {
   const [testingUrl, setTestingUrl] = useState(false);
   const [urlStatus, setUrlStatus] = useState<"idle" | "online" | "offline">("idle");
   const [urlMessage, setUrlMessage] = useState("");
+  const [voiceError, setVoiceError] = useState("");
 
   useEffect(() => {
     detectWebGPU().then(setHasGPU);
@@ -158,6 +159,7 @@ function ProfilePage() {
 
   const testVoice = () => {
     unlockAudio();
+    setVoiceError("");
     void speak(
       p.language === "es-ES"
         ? `Hola, soy ${p.name}. ¿Qué tal suena mi voz?`
@@ -166,7 +168,7 @@ function ProfilePage() {
       p.language,
       undefined,
       { localOnly: p.localOnly },
-    );
+    ).catch((error) => setVoiceError(error instanceof Error ? error.message : "No se pudo reproducir la voz."));
   };
 
   const selectedModel = getModelOption(
@@ -342,6 +344,14 @@ function ProfilePage() {
                 value={`${p.voice.engine}|${p.voice.id}`}
                 onChange={(e) => void pickVoice(e.target.value)}
               >
+                <optgroup label="Voz del dispositivo · predeterminada">
+                  <option value="system|">Operadora · automática local</option>
+                  {voices.map((v) => (
+                    <option key={v.voiceURI} value={`system|${v.voiceURI}`}>
+                      {v.name}{v.localService ? " · local" : " · en línea"}
+                    </option>
+                  ))}
+                </optgroup>
                 {!p.localOnly && (
                   <optgroup label="Voces naturales · Gemini">
                     {GEMINI_VOICES.map((v) => (
@@ -358,14 +368,6 @@ function ProfilePage() {
                     </option>
                   ))}
                 </optgroup>
-                <optgroup label="Voces locales del dispositivo">
-                  <option value="system|">Automática (sin datos)</option>
-                  {voices.map((v) => (
-                    <option key={v.voiceURI} value={`system|${v.voiceURI}`}>
-                      {v.name}
-                    </option>
-                  ))}
-                </optgroup>
               </select>
               <Button
                 variant="ghost"
@@ -377,6 +379,7 @@ function ProfilePage() {
                 <AudioLines className="h-4 w-4" />
               </Button>
             </div>
+            {voiceError && <p role="alert" className="text-sm text-destructive">{voiceError}</p>}
             {kProg !== null && (
               <p className="mt-1.5 text-xs text-primary">
                 Descargando voz… {Math.round(kProg * 100)}%
@@ -502,7 +505,7 @@ function ProfilePage() {
                       : "border-border text-muted-foreground"
                   }`}
                 >
-                  Retrato animado local
+                  Animación local · automática
                 </Button>
                 <Button
                   variant="ghost"
@@ -520,7 +523,7 @@ function ProfilePage() {
               {p.avatarEngine === "liveavatar" && (
                 <div className="space-y-2">
                   <p className="text-muted-foreground">
-                    LiveAvatar o FasterLivePortrait requieren un servidor externo con GPU dedicada.
+                    LiveAvatar necesita NVIDIA CUDA: 80 GB para la versión de una GPU; FP8 admite configuraciones de 48 GB. Iris Xe usa el retrato animado local.
                   </p>
                   <div className="flex gap-2">
                     <input

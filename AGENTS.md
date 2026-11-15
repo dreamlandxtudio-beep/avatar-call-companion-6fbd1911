@@ -35,3 +35,4 @@ use the editor.
 - Store explicit character memories in Cloud with owner-scoped policies; never treat face-expression estimates as established emotions.
 - Keep Gemini calls behind the server connector and bundled browser models in workers, because provider credentials must stay private and model loading must not block the UI.
 - Publish MediaPipe WASM and portrait media via asset pointers, because runtime files exceed repository limits.
+- Default speech uses device synthesis and portrait rendering stays capped at 30 FPS/1280 pixels, because shared TTS quotas and high-DPI rendering must not govern the baseline experience.

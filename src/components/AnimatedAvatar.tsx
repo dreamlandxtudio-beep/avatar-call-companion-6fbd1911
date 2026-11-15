@@ -14,6 +14,7 @@ import { createExpressionEngine, stepExpressionEngine } from "@/lib/expressionEn
 import type { AvatarEmotion } from "@/lib/ai";
 import { audioVisemes } from "@/lib/voice";
 import { LiveAvatarStreamPlayer } from "./LiveAvatarStreamPlayer";
+import { portraitRenderBudget } from "@/lib/avatar-device";
 import type { AvatarEngine } from "@/lib/store";
 import type { UserFaceObservation } from "@/lib/userCamera";
 import teethTextureUrlAsset from "@/assets/images/teeth_mouth_cavity_1794754794898.jpg.asset.json";
@@ -1212,9 +1213,9 @@ export function AnimatedAvatar({
     let viewH = 480;
     const syncSize = () => {
       const rect = canvas.getBoundingClientRect();
-      const dpr = Math.min(2, window.devicePixelRatio || 1);
-      viewW = Math.max(1, Math.round(rect.width * dpr));
-      viewH = Math.max(1, Math.round(rect.height * dpr));
+      const budget = portraitRenderBudget(rect.width, rect.height, window.devicePixelRatio || 1);
+      viewW = budget.width;
+      viewH = budget.height;
       if (canvas.width !== viewW || canvas.height !== viewH) {
         canvas.width = viewW;
         canvas.height = viewH;
@@ -1243,9 +1244,11 @@ export function AnimatedAvatar({
     setRigReady(true);
 
     let raf = 0;
+    let lastFrame = 0;
     const draw = (now: number) => {
       raf = requestAnimationFrame(draw);
-      if (contextLost || document.hidden) return;
+      if (contextLost || document.hidden || now - lastFrame < 1000 / 30) return;
+      lastFrame = now;
 
       const isActive = activeRef.current;
       const visemes = isActive ? audioVisemes() : { level: 0, open: 0, wide: 0, round: 0 };
@@ -1464,19 +1467,6 @@ export function AnimatedAvatar({
     };
   }, [img, face, webglFailed]);
 
-  if (engine === "liveavatar") {
-    return (
-      <div className={`relative overflow-hidden ${className}`}>
-        <LiveAvatarStreamPlayer
-          serverUrl={liveAvatarUrl}
-          active={active}
-          name={name}
-          fallbackPhoto={effectiveSrc}
-        />
-      </div>
-    );
-  }
-
   return (
     <div ref={containerRef} className={`relative overflow-hidden select-none ${className}`}>
       <img
@@ -1493,6 +1483,9 @@ export function AnimatedAvatar({
             rigReady ? "opacity-100" : "opacity-0"
           }`}
         />
+      )}
+      {engine === "liveavatar" && (
+        <LiveAvatarStreamPlayer serverUrl={liveAvatarUrl} active={active} name={name} fallbackPhoto={effectiveSrc} />
       )}
     </div>
   );
