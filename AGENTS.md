@@ -36,3 +36,6 @@ use the editor.
 - Keep Gemini calls behind the server connector and bundled browser models in workers, because provider credentials must stay private and model loading must not block the UI.
 - Publish MediaPipe WASM and portrait media via asset pointers, because runtime files exceed repository limits.
 - Default speech uses device synthesis and portrait rendering stays capped at 30 FPS/1280 pixels, because shared TTS quotas and high-DPI rendering must not govern the baseline experience.
+- Fill the MediaPipe eye apertures in the render mesh and keep gaze independent from head pose, because the tessellation otherwise exposes static eyes from the base photo.
+- Camera mirroring uses short-lived observable action scores and a separate mirror route, because facial movements are not proof of emotion and stale frames must not drive expressions.
+- Browser downloads request persistent storage and reuse Transformers.js caches, because model weights should survive reloads without promising permanent browser storage.
