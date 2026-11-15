@@ -1488,14 +1488,14 @@ export function AnimatedAvatar({
       <img
         src={effectiveSrc}
         alt={name}
-        className={`pointer-events-none absolute inset-0 h-full w-full ${
+        className={`pointer-events-none absolute inset-0 h-full w-full ${rigReady && !webglFailed ? "invisible" : "visible"} ${
           fit === "contain" ? "object-contain object-center" : "object-cover object-[50%_28%]"
         }`}
       />
       {!webglFailed && (
         <canvas
           ref={canvasRef}
-          className={`relative block h-full w-full transition-opacity duration-300 ${
+          className={`relative block h-full w-full ${
             rigReady ? "opacity-100" : "opacity-0"
           }`}
         />
