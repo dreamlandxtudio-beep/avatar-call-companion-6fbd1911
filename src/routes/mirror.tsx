@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { ArrowLeft, Camera, CameraOff, SlidersHorizontal } from "lucide-react";
+import { ArrowLeft, Camera, CameraOff, SlidersHorizontal, ScanFace } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { AnimatedAvatar } from "@/components/AnimatedAvatar";
 import { Button } from "@/components/ui/button";
@@ -26,7 +26,10 @@ function Mirror() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [face, setFace] = useState<UserFaceObservation>();
-  const [mode, setMode] = useState<"mirror" | "subtle">("mirror");
+  const [mode, setMode] = useState<"mirror" | "subtle">("subtle");
+  const [showMesh, setShowMesh] = useState(false);
+  const [style, setStyle] = useState<"auto" | "human" | "anime">("auto");
+  const [pose, setPose] = useState<"neutral" | "happy" | "laugh" | "sad" | "surprised">("neutral");
   const [strength, setStrength] = useState(0.8);
   const stop = () => { generation.current++; stopUserCamera(stream.current); stream.current = null; setRunning(false); setLoading(false); setFace(undefined); };
   useEffect(() => () => { generation.current++; stopUserCamera(stream.current); }, []);
@@ -70,7 +73,7 @@ function Mirror() {
     </header>
     <div className="mirror-stage">
       <section><div className="mirror-portrait relative"><video ref={video} muted playsInline className="h-full w-full -scale-x-100 object-cover" />{!running && !loading && <div className="absolute inset-0 flex items-center justify-center text-muted-foreground"><Camera className="h-10 w-10" /></div>}</div><h2 className="mt-3 text-sm font-bold">Tú</h2><p className="min-h-10 text-xs text-muted-foreground">{face?.labelEs ?? (loading ? "Preparando cámara…" : running ? "Buscando rostro…" : "Cámara apagada")}</p></section>
-      <section><div className="mirror-portrait"><AnimatedAvatar src={p.avatar} name={p.name} active={false} userFace={adjusted} mirrorMode={mode === "mirror"} fit="cover" className="h-full w-full" /></div><h2 className="mt-3 text-sm font-bold">{p.name}</h2><p className="text-xs text-muted-foreground">{mode === "mirror" ? "Espejo" : "Gestos sutiles"}</p></section>
+      <section><div className="mirror-portrait relative"><AnimatedAvatar src={p.avatar} name={p.name} active={false} emotion={pose} showMesh={showMesh} animationStyle={style} userFace={adjusted} mirrorMode={mode === "mirror"} fit="cover" className="h-full w-full" /></div><h2 className="mt-3 text-sm font-bold">{p.name}</h2><p className="text-xs text-muted-foreground">{mode === "mirror" ? "Espejo" : "Gestos sutiles"}</p></section>
     </div>
     <div className="mt-5 flex flex-wrap items-center gap-4 border-t border-border pt-5">
       <Button onClick={running || loading ? stop : () => void start()}>{running || loading ? <CameraOff /> : <Camera />}{running || loading ? "Apagar cámara" : "Activar cámara"}</Button>
@@ -78,6 +81,9 @@ function Mirror() {
         <Button size="sm" variant={mode === "mirror" ? "default" : "ghost"} onClick={() => setMode("mirror")}>Espejo</Button>
         <Button size="sm" variant={mode === "subtle" ? "default" : "ghost"} onClick={() => setMode("subtle")}>Sutil</Button>
       </div>
+      <Button variant={showMesh ? "default" : "outline"} aria-pressed={showMesh} onClick={() => setShowMesh(!showMesh)}><ScanFace />Malla facial</Button>
+      <label className="flex items-center gap-2 text-sm">Retrato<select aria-label="Tipo de animación" className="rounded-md border border-input bg-background p-2" value={style} onChange={e => setStyle(e.target.value as typeof style)}><option value="auto">Automático</option><option value="human">Persona</option><option value="anime">Anime / dibujo</option></select></label>
+      <label className="flex items-center gap-2 text-sm">Expresión<select aria-label="Probar expresión" className="rounded-md border border-input bg-background p-2" value={pose} onChange={e => setPose(e.target.value as typeof pose)}><option value="neutral">En reposo</option><option value="happy">Sonrisa</option><option value="laugh">Risa</option><option value="sad">Comisuras bajas</option><option value="surprised">Sorpresa</option></select></label>
       <label className="flex items-center gap-3 text-sm">Intensidad<input aria-label="Intensidad de imitación" type="range" min="0.2" max="1" step="0.1" value={strength} onChange={e => setStrength(Number(e.target.value))} /></label>
     </div>
     {error && <p role="alert" className="mt-4 text-sm text-destructive">{error}</p>}
