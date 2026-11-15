@@ -17,3 +17,10 @@
 - [ ] Connect real LiveAvatar video (requires hosted GPU inference service with documented streaming API).
 - [ ] Support arbitrary compact/large models (requires compatible model format and hosted inference for large models).
 - [ ] Monetization waits for pricing and checkout requirements.
+
+## Current portrait repair
+- [ ] Replace overlapping face layers with one continuous textured portrait mesh.
+- [ ] Preserve source eyelid/lip texture and specialize human/anime articulation.
+- [ ] Delay subtle reactions until sustained fresh observations; keep attentive gaze.
+- [ ] Add deformed facial wireframe and expression previews in the mirror.
+- [ ] Verify portrait rendering, reactions and mobile controls.
