@@ -15,15 +15,22 @@ export type FaceColors = {
   skin: [number, number, number];
   lip: [number, number, number];
   eyelid: [number, number, number];
+  lowerEyelid: [number, number, number];
   enamel: [number, number, number];
   shirt: [number, number, number];
   scleraRight: [number, number, number];
   scleraLeft: [number, number, number];
+  scleraRightNeg: [number, number, number];
+  scleraRightPos: [number, number, number];
+  scleraLeftNeg: [number, number, number];
+  scleraLeftPos: [number, number, number];
 };
 
 export type EyeCurveProfile = {
   upper: [number, number, number, number];
   lower: [number, number, number, number];
+  upperArch: [number, number, number, number, number, number, number, number];
+  lowerArch: [number, number, number, number, number, number, number, number];
   halfW: number;
   scaleY: number;
 };
@@ -44,6 +51,8 @@ export type FacePts = {
   mouthH: number;
   jawSpan: number;
   restMouthRatio: number;
+  restMouthTopY: number;
+  restMouthBotY: number;
   hasVisibleTeeth: boolean;
   isMouthParted: boolean;
   restTeethDepth: number;
@@ -202,13 +211,16 @@ function extractEyeCurveProfile(
     return 0;
   };
 
-  const samples = [-0.6, -0.2, 0.2, 0.6];
+  const samples = [-0.74, -0.25, 0.25, 0.74];
+  const samples8 = [-0.82, -0.58, -0.34, -0.11, 0.11, 0.34, 0.58, 0.82];
   const rawUpper = samples.map((qt) => Math.min(-0.001, evalSorted(up, qt)));
   const rawLower = samples.map((qt) => Math.max(0.001, evalSorted(lo, qt)));
+  const rawUpper8 = samples8.map((qt) => Math.min(-0.001, evalSorted(up, qt)));
+  const rawLower8 = samples8.map((qt) => Math.max(0.001, evalSorted(lo, qt)));
 
   let maxAbs = 0.006;
-  for (const v of rawUpper) maxAbs = Math.max(maxAbs, Math.abs(v));
-  for (const v of rawLower) maxAbs = Math.max(maxAbs, Math.abs(v));
+  for (const v of rawUpper8) maxAbs = Math.max(maxAbs, Math.abs(v));
+  for (const v of rawLower8) maxAbs = Math.max(maxAbs, Math.abs(v));
 
   return {
     center: [midX, midY],
@@ -224,6 +236,26 @@ function extractEyeCurveProfile(
         rawLower[1]! / maxAbs,
         rawLower[2]! / maxAbs,
         rawLower[3]! / maxAbs,
+      ],
+      upperArch: [
+        rawUpper8[0]! / maxAbs,
+        rawUpper8[1]! / maxAbs,
+        rawUpper8[2]! / maxAbs,
+        rawUpper8[3]! / maxAbs,
+        rawUpper8[4]! / maxAbs,
+        rawUpper8[5]! / maxAbs,
+        rawUpper8[6]! / maxAbs,
+        rawUpper8[7]! / maxAbs,
+      ],
+      lowerArch: [
+        rawLower8[0]! / maxAbs,
+        rawLower8[1]! / maxAbs,
+        rawLower8[2]! / maxAbs,
+        rawLower8[3]! / maxAbs,
+        rawLower8[4]! / maxAbs,
+        rawLower8[5]! / maxAbs,
+        rawLower8[6]! / maxAbs,
+        rawLower8[7]! / maxAbs,
       ],
       halfW,
       scaleY: maxAbs,
@@ -249,6 +281,12 @@ type MouthAnalysis = {
   hasVisibleTeeth: boolean;
   isMouthParted: boolean;
   restTeethDepth: number;
+  rightPupil: [number, number];
+  leftPupil: [number, number];
+  rightIrisRadius: number;
+  leftIrisRadius: number;
+  rightEyeCurve: EyeCurveProfile;
+  leftEyeCurve: EyeCurveProfile;
 };
 
 function analyzePhotoFeatures(
@@ -257,17 +295,29 @@ function analyzePhotoFeatures(
   restMouthRatio: number,
   rightPupil: [number, number],
   leftPupil: [number, number],
-  rightEyeRx: number,
-  leftEyeRx: number,
+  rightEyeCenter: [number, number],
+  leftEyeCenter: [number, number],
+  rightEyeAxis: Axis2D,
+  leftEyeAxis: Axis2D,
+  rightEyeCurve: EyeCurveProfile,
+  leftEyeCurve: EyeCurveProfile,
+  rightIrisRadius: number,
+  leftIrisRadius: number,
+  aspect: number,
 ): MouthAnalysis {
   const fallback: FaceColors = {
     skin: [215, 175, 155],
     lip: [165, 92, 92],
     eyelid: [195, 155, 138],
+    lowerEyelid: [198, 160, 142],
     enamel: [232, 226, 218],
     shirt: [45, 68, 88],
-    scleraRight: [242, 240, 238],
-    scleraLeft: [242, 240, 238],
+    scleraRight: [212, 206, 200],
+    scleraLeft: [212, 206, 200],
+    scleraRightNeg: [204, 198, 192],
+    scleraRightPos: [216, 210, 204],
+    scleraLeftNeg: [216, 210, 204],
+    scleraLeftPos: [204, 198, 192],
   };
 
   try {
@@ -282,6 +332,12 @@ function analyzePhotoFeatures(
         hasVisibleTeeth: restMouthRatio > 0.08,
         isMouthParted: restMouthRatio > 0.08,
         restTeethDepth: Math.abs(pts[14]![1] - pts[13]![1]),
+        rightPupil,
+        leftPupil,
+        rightIrisRadius,
+        leftIrisRadius,
+        rightEyeCurve,
+        leftEyeCurve,
       };
     }
     ctx.drawImage(img, 0, 0, S, S);
@@ -306,11 +362,19 @@ function analyzePhotoFeatures(
       return n > 0 ? [r / n, g / n, b / n] : fallback.skin;
     };
 
-    const sampleEyeSclera = (
+    const sampleEyeScleraSides = (
       eyeLoop: number[],
+      eyeCenter: [number, number],
       pupil: [number, number],
-      rx: number,
-    ): [number, number, number] => {
+      axis: Axis2D,
+      irisRad: number,
+    ): {
+      mid: [number, number, number];
+      neg: [number, number, number];
+      pos: [number, number, number];
+      refinedPupil: [number, number];
+      refinedIrisRad: number;
+    } => {
       const imgW = img.naturalWidth || img.width || 512;
       const imgH = img.naturalHeight || img.height || 512;
       let eMinX = 1;
@@ -327,13 +391,21 @@ function analyzePhotoFeatures(
       }
       const ew = Math.max(0.012, eMaxX - eMinX);
       const eh = Math.max(0.008, eMaxY - eMinY);
-      const cropW = 64;
-      const cropH = 32;
+      const cropW = 80;
+      const cropH = 40;
       const ec = document.createElement("canvas");
       ec.width = cropW;
       ec.height = cropH;
       const ectx = ec.getContext("2d", { willReadFrequently: true });
-      if (!ectx) return [245, 245, 243];
+      if (!ectx) {
+        return {
+          mid: [212, 206, 200],
+          neg: [208, 202, 196],
+          pos: [214, 208, 202],
+          refinedPupil: pupil,
+          refinedIrisRad: irisRad * 1.15,
+        };
+      }
       ectx.drawImage(img, eMinX * imgW, eMinY * imgH, ew * imgW, eh * imgH, 0, 0, cropW, cropH);
       const edata = ectx.getImageData(0, 0, cropW, cropH).data;
       const eyePoly: Array<[number, number]> = eyeLoop.map((idx) => [
@@ -341,70 +413,389 @@ function analyzePhotoFeatures(
         ((pts[idx]![1] - eMinY) / eh) * cropH,
       ]);
 
-      const candidates: Array<{ score: number; rgb: [number, number, number] }> = [];
+      // Pass 1: Estimate sclera reference luma and refine exact cornea center & outer limbus radius
+      const eyeLumas: number[] = [];
+      const eyePixels: Array<{
+        nx: number;
+        ny: number;
+        fy: number;
+        luma: number;
+        r: number;
+        g: number;
+        b: number;
+      }> = [];
       for (let py = 0; py < cropH; py++) {
+        const fy = (py + 0.5) / cropH;
+        if (fy < 0.2 || fy > 0.88) continue;
         for (let px = 0; px < cropW; px++) {
           if (!pointInPoly(px + 0.5, py + 0.5, eyePoly)) continue;
           const nx = eMinX + ((px + 0.5) / cropW) * ew;
-          const ny = eMinY + ((py + 0.5) / cropH) * eh;
-          // Exclude central pupil/iris region so we measure genuine sclera white
-          const dPupil = Math.hypot(nx - pupil[0], ny - pupil[1]);
-          if (dPupil < rx * 0.42) continue;
-
+          const ny = eMinY + fy * eh;
           const off = (py * cropW + px) * 4;
           const r = edata[off]!;
           const g = edata[off + 1]!;
           const b = edata[off + 2]!;
           const luma = 0.299 * r + 0.587 * g + 0.114 * b;
-          const maxC = Math.max(r, g, b);
-          const minC = Math.min(r, g, b);
-          const sat = maxC > 0 ? (maxC - minC) / maxC : 0;
-          const redness = r - (g + b) * 0.5;
-          if (luma < 142 || sat > 0.19 || redness > 9) continue;
-          const score = luma - redness * 3.2 - sat * 110;
-          candidates.push({ score, rgb: [r, g, b] });
+          eyeLumas.push(luma);
+          eyePixels.push({ nx, ny, fy, luma, r, g, b });
         }
       }
 
-      if (candidates.length === 0) {
-        return [238, 236, 234];
+      let refinedPupil: [number, number] = [pupil[0], pupil[1]];
+      let refinedIrisRad = irisRad * 1.16;
+
+      if (eyeLumas.length >= 20) {
+        const sortedL = [...eyeLumas].sort((a, b) => a - b);
+        const scleraLuma =
+          sortedL[Math.min(sortedL.length - 1, Math.floor(sortedL.length * 0.78))]!;
+        const darkCut = scleraLuma * 0.76;
+
+        let sumW = 0;
+        let sumX = 0;
+        let sumY = 0;
+        for (const p of eyePixels) {
+          if (p.fy < 0.26 || p.fy > 0.84) continue;
+          const d0 = Math.hypot((p.nx - pupil[0]) * aspect, p.ny - pupil[1]);
+          if (d0 > irisRad * 1.32 || p.luma >= darkCut) continue;
+          const w = Math.pow(scleraLuma - p.luma, 2);
+          sumW += w;
+          sumX += p.nx * w;
+          sumY += p.ny * w;
+        }
+        if (sumW > 0) {
+          const cx = sumX / sumW;
+          const cy = sumY / sumW;
+          const shiftDist = Math.hypot((cx - pupil[0]) * aspect, cy - pupil[1]);
+          const maxShift = irisRad * 0.34;
+          if (shiftDist > 1e-6) {
+            const clampScale = Math.min(1, maxShift / shiftDist);
+            refinedPupil = [
+              pupil[0] + (cx - pupil[0]) * clampScale,
+              pupil[1] + (cy - pupil[1]) * clampScale,
+            ];
+          }
+        }
+
+        // Measure full outer dark limbus boundary around refined cornea center
+        const limbusCut = scleraLuma * 0.83;
+        const radialDists: number[] = [];
+        for (const p of eyePixels) {
+          if (p.fy < 0.3 || p.fy > 0.82) continue;
+          const d = Math.hypot((p.nx - refinedPupil[0]) * aspect, p.ny - refinedPupil[1]);
+          if (d <= irisRad * 1.48 && p.luma < limbusCut) {
+            radialDists.push(d);
+          }
+        }
+        if (radialDists.length >= 12) {
+          radialDists.sort((a, b) => a - b);
+          const p94 =
+            radialDists[Math.min(radialDists.length - 1, Math.floor(radialDists.length * 0.94))]!;
+          const eyeHalfW = Math.max(0.01, ew * aspect * 0.5);
+          refinedIrisRad = Math.min(eyeHalfW * 0.72, Math.max(irisRad * 1.16, p94 * 1.07));
+        }
       }
-      candidates.sort((a, b) => b.score - a.score);
-      // Sample the natural mid-upper clean sclera band (26%-64% percentile)
-      const startIdx = Math.min(candidates.length - 1, Math.floor(candidates.length * 0.26));
-      const endIdx = Math.min(
-        candidates.length,
-        Math.max(startIdx + 4, Math.floor(candidates.length * 0.64)),
-      );
-      let sr = 0;
-      let sg = 0;
-      let sb = 0;
-      let count = 0;
-      for (let i = startIdx; i < endIdx; i++) {
-        const cRGB = candidates[i]!.rgb;
-        sr += cRGB[0];
-        sg += cRGB[1];
-        sb += cRGB[2];
-        count++;
+
+      type ScleraCand = { score: number; rgb: [number, number, number] };
+      const negCands: ScleraCand[] = [];
+      const posCands: ScleraCand[] = [];
+      const allCands: ScleraCand[] = [];
+
+      for (const p of eyePixels) {
+        // Aspect-corrected full cornea + limbus exclusion so zero iris border pollutes sclera
+        const dPupil = Math.hypot((p.nx - refinedPupil[0]) * aspect, p.ny - refinedPupil[1]);
+        if (dPupil < refinedIrisRad * 1.06) continue;
+
+        const maxC = Math.max(p.r, p.g, p.b);
+        const minC = Math.min(p.r, p.g, p.b);
+        const sat = maxC > 0 ? (maxC - minC) / maxC : 0;
+        const redness = p.r - (p.g + p.b) * 0.5;
+        // Reject only dark lash pixels or strong tear-duct caruncle red — keep true shaded sclera tones!
+        if (p.luma < 52 || sat > 0.42 || redness > 28) continue;
+        const score = p.luma - redness * 0.7 - sat * 30;
+        const item: ScleraCand = { score, rgb: [p.r, p.g, p.b] };
+        allCands.push(item);
+
+        const relX = (p.nx - eyeCenter[0]) * aspect * axis.ux + (p.ny - eyeCenter[1]) * axis.uy;
+        if (relX < -refinedIrisRad * 0.15) negCands.push(item);
+        else if (relX > refinedIrisRad * 0.15) posCands.push(item);
       }
-      const n = Math.max(1, count);
-      const avgR = sr / n;
-      const avgG = sg / n;
-      const avgB = sb / n;
-      const cleanAvg = (avgG + avgB) * 0.5;
-      return [
-        Math.min(246, Math.round(Math.min(avgR, cleanAvg + 2))),
-        Math.min(246, Math.round(avgG)),
-        Math.min(246, Math.round(avgB)),
-      ];
+
+      const summarize = (list: ScleraCand[], fallbackColor: [number, number, number]) => {
+        if (list.length === 0) return fallbackColor;
+        const sorted = [...list].sort((a, b) => a.score - b.score);
+        // Inner median band (35%-72% percentile) preserves exact real photo luminance/warmth without whitewash
+        const sIdx = Math.min(sorted.length - 1, Math.floor(sorted.length * 0.35));
+        const eIdx = Math.min(sorted.length, Math.max(sIdx + 1, Math.floor(sorted.length * 0.72)));
+        let sr = 0;
+        let sg = 0;
+        let sb = 0;
+        let cnt = 0;
+        for (let i = sIdx; i < eIdx; i++) {
+          const cRGB = sorted[i]!.rgb;
+          sr += cRGB[0];
+          sg += cRGB[1];
+          sb += cRGB[2];
+          cnt++;
+        }
+        const n = Math.max(1, cnt);
+        return [Math.round(sr / n), Math.round(sg / n), Math.round(sb / n)] as [
+          number,
+          number,
+          number,
+        ];
+      };
+
+      const mid = summarize(allCands, [206, 200, 194]);
+      const neg = summarize(negCands, mid);
+      const pos = summarize(posCands, mid);
+      return { mid, neg, pos, refinedPupil, refinedIrisRad };
     };
 
     const skin = avgAt([118, 347, 50, 280, 195]);
+    const skinRefLuma = 0.299 * skin[0] + 0.587 * skin[1] + 0.114 * skin[2];
+
+    const refineEyeAndSample = (
+      eyeLoop: number[],
+      eyeCenter: [number, number],
+      pupil: [number, number],
+      axis: Axis2D,
+      curve: EyeCurveProfile,
+      irisRad: number,
+    ): {
+      mid: [number, number, number];
+      neg: [number, number, number];
+      pos: [number, number, number];
+      refinedPupil: [number, number];
+      refinedIrisRad: number;
+      refinedCurve: EyeCurveProfile;
+      upperLidRgb: [number, number, number] | null;
+      lowerLidRgb: [number, number, number] | null;
+    } => {
+      const baseRes = sampleEyeScleraSides(eyeLoop, eyeCenter, pupil, axis, irisRad);
+      const imgW = img.naturalWidth || img.width || 512;
+      const imgH = img.naturalHeight || img.height || 512;
+      const halfW = curve.halfW;
+      const scaleY = curve.scaleY;
+
+      // Bounding region anchored cleanly to left/right commissures with vertical margin for upper tarsal skin & lower lid
+      const padNormX = (halfW * 1.25) / aspect;
+      const padNormYTop = scaleY * 2.4;
+      const padNormYBot = scaleY * 1.8;
+      const rx0 = Math.max(0, eyeCenter[0] - padNormX);
+      const rx1 = Math.min(1, eyeCenter[0] + padNormX);
+      const ry0 = Math.max(0, eyeCenter[1] - padNormYTop);
+      const ry1 = Math.min(1, eyeCenter[1] + padNormYBot);
+      const rw = Math.max(0.012, rx1 - rx0);
+      const rh = Math.max(0.012, ry1 - ry0);
+
+      const CW = 96;
+      const CH = 72;
+      const cc = document.createElement("canvas");
+      cc.width = CW;
+      cc.height = CH;
+      const cctx = cc.getContext("2d", { willReadFrequently: true });
+      if (!cctx) {
+        return {
+          ...baseRes,
+          refinedCurve: curve,
+          upperLidRgb: null,
+          lowerLidRgb: null,
+        };
+      }
+      cctx.drawImage(img, rx0 * imgW, ry0 * imgH, rw * imgW, rh * imgH, 0, 0, CW, CH);
+      const cdata = cctx.getImageData(0, 0, CW, CH).data;
+
+      const sampleCrop = (
+        nx: number,
+        ny: number,
+      ): { r: number; g: number; b: number; luma: number } => {
+        const px = Math.min(CW - 1, Math.max(0, Math.round(((nx - rx0) / rw) * (CW - 1))));
+        const py = Math.min(CH - 1, Math.max(0, Math.round(((ny - ry0) / rh) * (CH - 1))));
+        const off = (py * CW + px) * 4;
+        const r = cdata[off]!;
+        const g = cdata[off + 1]!;
+        const b = cdata[off + 2]!;
+        return { r, g, b, luma: 0.299 * r + 0.587 * g + 0.114 * b };
+      };
+
+      const sampleEyCoord = (ex: number, ey: number) => {
+        const dx = axis.ux * (ex * halfW) + axis.vx * (ey * scaleY);
+        const dy = axis.uy * (ex * halfW) + axis.vy * (ey * scaleY);
+        return sampleCrop(eyeCenter[0] + dx / aspect, eyeCenter[1] + dy);
+      };
+
+      // Corner-to-corner 8-column color-edge refinement for upper lash margin & lower lid rim
+      const cols = [-0.82, -0.58, -0.34, -0.11, 0.11, 0.34, 0.58, 0.82];
+      const detectedUp = [...curve.upperArch];
+      const detectedLo = [...curve.lowerArch];
+      const upperSkinCands: Array<{ luma: number; rgb: [number, number, number] }> = [];
+      const lowerSkinCands: Array<{ luma: number; rgb: [number, number, number] }> = [];
+
+      for (let ci = 0; ci < cols.length; ci++) {
+        const ex = cols[ci]!;
+        const hintUp = curve.upperArch[ci]!;
+        const hintLo = curve.lowerArch[ci]!;
+
+        // 1) Upper lid boundary: strongest dark-above -> brighter-below transition OR sharp vertical intensity contrast near hintUp
+        let bestUp = hintUp;
+        let bestUpScore = -1e9;
+        for (let ey = hintUp - 0.38; ey <= Math.min(-0.08, hintUp + 0.34); ey += 0.04) {
+          const above = sampleEyCoord(ex, ey - 0.14);
+          const edge = sampleEyCoord(ex, ey);
+          const below = sampleEyCoord(ex, ey + 0.16);
+          const contrast =
+            below.luma - edge.luma * 0.65 - Math.max(0, above.luma - below.luma) * 0.15;
+          const lashDarkness = Math.max(0, skinRefLuma - edge.luma) * 0.45;
+          const prior = Math.abs(ey - hintUp) * 95;
+          const score = contrast + lashDarkness - prior;
+          if (score > bestUpScore) {
+            bestUpScore = score;
+            bestUp = ey;
+          }
+        }
+        detectedUp[ci] = Math.min(-0.08, Math.max(hintUp - 0.28, Math.min(hintUp + 0.24, bestUp)));
+
+        // 2) Lower lid rim: brighter-interior -> lid-border/skin transition near hintLo
+        let bestLo = hintLo;
+        let bestLoScore = -1e9;
+        for (let ey = Math.max(0.08, hintLo - 0.32); ey <= hintLo + 0.36; ey += 0.04) {
+          const above = sampleEyCoord(ex, ey - 0.16);
+          const edge = sampleEyCoord(ex, ey);
+          const below = sampleEyCoord(ex, ey + 0.18);
+          const edgeJump =
+            Math.abs(above.luma - edge.luma) * 0.65 + (below.luma - edge.luma) * 0.45;
+          const prior = Math.abs(ey - hintLo) * 105;
+          const score = edgeJump - prior;
+          if (score > bestLoScore) {
+            bestLoScore = score;
+            bestLo = ey;
+          }
+        }
+        detectedLo[ci] = Math.max(0.08, Math.min(hintLo + 0.28, Math.max(hintLo - 0.24, bestLo)));
+
+        // 3) Sample clean tarsal upper lid skin strictly ABOVE lash root (excluding black mascara/lashes)
+        if (Math.abs(ex) <= 0.68) {
+          for (let dy = 0.42; dy <= 1.05; dy += 0.18) {
+            const sp = sampleEyCoord(ex, detectedUp[ci]! - dy);
+            if (sp.luma >= Math.max(62, skinRefLuma * 0.68)) {
+              upperSkinCands.push({ luma: sp.luma, rgb: [sp.r, sp.g, sp.b] });
+            }
+          }
+          for (let dy = 0.22; dy <= 0.62; dy += 0.16) {
+            const sp = sampleEyCoord(ex, detectedLo[ci]! + dy);
+            if (sp.luma >= Math.max(62, skinRefLuma * 0.68)) {
+              lowerSkinCands.push({ luma: sp.luma, rgb: [sp.r, sp.g, sp.b] });
+            }
+          }
+        }
+      }
+
+      // Smooth adjacent arch samples gently so curvature from left corner to right corner is continuously arched
+      const smoothArch = (
+        arr: number[],
+        isUpper: boolean,
+      ): [number, number, number, number, number, number, number, number] => {
+        const out = [...arr];
+        for (let i = 1; i < out.length - 1; i++) {
+          out[i] = arr[i - 1]! * 0.24 + arr[i]! * 0.52 + arr[i + 1]! * 0.24;
+        }
+        out[0] = arr[0]! * 0.72 + arr[1]! * 0.28;
+        out[7] = arr[7]! * 0.72 + arr[6]! * 0.28;
+        return out.map((v) => (isUpper ? Math.min(-0.06, v) : Math.max(0.06, v))) as [
+          number,
+          number,
+          number,
+          number,
+          number,
+          number,
+          number,
+          number,
+        ];
+      };
+
+      const upperArch = smoothArch(detectedUp, true);
+      const lowerArch = smoothArch(detectedLo, false);
+
+      const medianRgb = (
+        list: Array<{ luma: number; rgb: [number, number, number] }>,
+      ): [number, number, number] | null => {
+        if (list.length < 3) return null;
+        const sorted = [...list].sort((a, b) => a.luma - b.luma);
+        const sIdx = Math.floor(sorted.length * 0.32);
+        const eIdx = Math.max(sIdx + 1, Math.floor(sorted.length * 0.76));
+        let sr = 0;
+        let sg = 0;
+        let sb = 0;
+        let cnt = 0;
+        for (let i = sIdx; i < eIdx; i++) {
+          const c = sorted[i]!.rgb;
+          sr += c[0];
+          sg += c[1];
+          sb += c[2];
+          cnt++;
+        }
+        return [Math.round(sr / cnt), Math.round(sg / cnt), Math.round(sb / cnt)];
+      };
+
+      return {
+        ...baseRes,
+        refinedCurve: {
+          ...curve,
+          upper: [upperArch[0], upperArch[2], upperArch[5], upperArch[7]],
+          lower: [lowerArch[0], lowerArch[2], lowerArch[5], lowerArch[7]],
+          upperArch,
+          lowerArch,
+        },
+        upperLidRgb: medianRgb(upperSkinCands),
+        lowerLidRgb: medianRgb(lowerSkinCands),
+      };
+    };
+
     const lip = avgAt([0, 17, 37, 267, 84, 314]);
-    const eyelid = avgAt([29, 30, 259, 260, 27, 257]);
+    const rawEyelid = avgAt([29, 30, 259, 260, 27, 257]);
     const forehead = avgAt([10, 151, 9]);
-    const scleraRight = sampleEyeSclera(RIGHT_EYE_LOOP, rightPupil, rightEyeRx);
-    const scleraLeft = sampleEyeSclera(LEFT_EYE_LOOP, leftPupil, leftEyeRx);
+    const rSclera = refineEyeAndSample(
+      RIGHT_EYE_LOOP,
+      rightEyeCenter,
+      rightPupil,
+      rightEyeAxis,
+      rightEyeCurve,
+      rightIrisRadius,
+    );
+    const lSclera = refineEyeAndSample(
+      LEFT_EYE_LOOP,
+      leftEyeCenter,
+      leftPupil,
+      leftEyeAxis,
+      leftEyeCurve,
+      leftIrisRadius,
+    );
+    const avgLid = (
+      a: [number, number, number] | null,
+      b: [number, number, number] | null,
+      fb: [number, number, number],
+    ): [number, number, number] => {
+      if (a && b) {
+        return [
+          Math.round((a[0] + b[0]) * 0.5),
+          Math.round((a[1] + b[1]) * 0.5),
+          Math.round((a[2] + b[2]) * 0.5),
+        ];
+      }
+      return a ?? b ?? fb;
+    };
+    const eyelid = avgLid(rSclera.upperLidRgb, lSclera.upperLidRgb, [
+      Math.round(skin[0] * 0.58 + rawEyelid[0] * 0.42),
+      Math.round(skin[1] * 0.58 + rawEyelid[1] * 0.42),
+      Math.round(skin[2] * 0.58 + rawEyelid[2] * 0.42),
+    ]);
+    const lowerEyelid = avgLid(rSclera.lowerLidRgb, lSclera.lowerLidRgb, skin);
+    const scleraRight = rSclera.mid;
+    const scleraLeft = lSclera.mid;
+    const scleraRightNeg = rSclera.neg;
+    const scleraRightPos = rSclera.pos;
+    const scleraLeftNeg = lSclera.neg;
+    const scleraLeftPos = lSclera.pos;
 
     let shirtR = 0;
     let shirtG = 0;
@@ -533,10 +924,29 @@ function analyzePhotoFeatures(
     const restTeethDepth = Math.max(lipGapY, maxTeethNormY);
 
     return {
-      colors: { skin, lip, eyelid, enamel, shirt, scleraRight, scleraLeft },
+      colors: {
+        skin,
+        lip,
+        eyelid,
+        lowerEyelid,
+        enamel,
+        shirt,
+        scleraRight,
+        scleraLeft,
+        scleraRightNeg,
+        scleraRightPos,
+        scleraLeftNeg,
+        scleraLeftPos,
+      },
       hasVisibleTeeth,
       isMouthParted,
       restTeethDepth,
+      rightPupil: rSclera.refinedPupil,
+      leftPupil: lSclera.refinedPupil,
+      rightIrisRadius: rSclera.refinedIrisRad,
+      leftIrisRadius: lSclera.refinedIrisRad,
+      rightEyeCurve: rSclera.refinedCurve,
+      leftEyeCurve: lSclera.refinedCurve,
     };
   } catch {
     return {
@@ -544,6 +954,12 @@ function analyzePhotoFeatures(
       hasVisibleTeeth: restMouthRatio > 0.08,
       isMouthParted: restMouthRatio > 0.08,
       restTeethDepth: Math.abs(pts[14]![1] - pts[13]![1]),
+      rightPupil,
+      leftPupil,
+      rightIrisRadius: rightIrisRadius * 1.15,
+      leftIrisRadius: leftIrisRadius * 1.15,
+      rightEyeCurve,
+      leftEyeCurve,
     };
   }
 }
@@ -579,7 +995,7 @@ let visionPromise: Promise<{
 let visionRetryAfter = 0;
 
 async function getVisionModels() {
-  if (lm && fd) {
+  if (lm) {
     return { landmarker: lm, detector: fd, handLandmarker: hl, segmenter: seg };
   }
   if (Date.now() < visionRetryAfter) {
@@ -589,51 +1005,64 @@ async function getVisionModels() {
   const { FaceDetector, FaceLandmarker, HandLandmarker, ImageSegmenter } =
     await import("@mediapipe/tasks-vision");
 
+  const withSoftTimeout = <T>(p: Promise<T>, ms: number): Promise<T | null> =>
+    Promise.race([p.catch(() => null), new Promise<null>((r) => setTimeout(() => r(null), ms))]);
+
   const initFromBase = async () => {
     const fs = await resolveVisionFileset();
+    const landmarkerPromise = FaceLandmarker.createFromOptions(fs, {
+      baseOptions: {
+        modelAssetPath:
+          "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task",
+        delegate: "CPU",
+      },
+      runningMode: "IMAGE",
+      numFaces: 1,
+      minFaceDetectionConfidence: 0.12,
+      minFacePresenceConfidence: 0.12,
+      minTrackingConfidence: 0.12,
+    });
     const [landmarker, detector, handLandmarker, segmenter] = await Promise.all([
-      FaceLandmarker.createFromOptions(fs, {
-        baseOptions: {
-          modelAssetPath:
-            "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task",
-          delegate: "CPU",
-        },
-        runningMode: "IMAGE",
-        numFaces: 1,
-        minFaceDetectionConfidence: 0.12,
-        minFacePresenceConfidence: 0.12,
-        minTrackingConfidence: 0.12,
-      }),
-      FaceDetector.createFromOptions(fs, {
-        baseOptions: {
-          modelAssetPath:
-            "https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_short_range/float16/1/blaze_face_short_range.tflite",
-          delegate: "CPU",
-        },
-        runningMode: "IMAGE",
-        minDetectionConfidence: 0.15,
-      }).catch(() => null),
-      HandLandmarker.createFromOptions(fs, {
-        baseOptions: {
-          modelAssetPath:
-            "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task",
-          delegate: "CPU",
-        },
-        runningMode: "IMAGE",
-        numHands: 2,
-        minHandDetectionConfidence: 0.2,
-        minHandPresenceConfidence: 0.2,
-      }).catch(() => null),
-      ImageSegmenter.createFromOptions(fs, {
-        baseOptions: {
-          modelAssetPath:
-            "https://storage.googleapis.com/mediapipe-models/image_segmenter/selfie_segmenter/float16/latest/selfie_segmenter.tflite",
-          delegate: "CPU",
-        },
-        runningMode: "IMAGE",
-        outputConfidenceMasks: true,
-        outputCategoryMask: false,
-      }).catch(() => null),
+      landmarkerPromise,
+      withSoftTimeout(
+        FaceDetector.createFromOptions(fs, {
+          baseOptions: {
+            modelAssetPath:
+              "https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_short_range/float16/1/blaze_face_short_range.tflite",
+            delegate: "CPU",
+          },
+          runningMode: "IMAGE",
+          minDetectionConfidence: 0.15,
+        }),
+        6000,
+      ),
+      withSoftTimeout(
+        HandLandmarker.createFromOptions(fs, {
+          baseOptions: {
+            modelAssetPath:
+              "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task",
+            delegate: "CPU",
+          },
+          runningMode: "IMAGE",
+          numHands: 2,
+          minHandDetectionConfidence: 0.2,
+          minHandPresenceConfidence: 0.2,
+        }),
+        6000,
+      ),
+      withSoftTimeout(
+        ImageSegmenter.createFromOptions(fs, {
+          baseOptions: {
+            modelAssetPath:
+              "https://storage.googleapis.com/mediapipe-models/image_segmenter/selfie_segmenter/float16/latest/selfie_segmenter.tflite",
+            delegate: "CPU",
+          },
+          runningMode: "IMAGE",
+          outputConfidenceMasks: true,
+          outputCategoryMask: false,
+        }),
+        6000,
+      ),
     ]);
     return { landmarker, detector, handLandmarker, segmenter };
   };
@@ -642,11 +1071,11 @@ async function getVisionModels() {
     visionPromise = Promise.race([
       initFromBase(),
       new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error("Vision model timeout")), 5500),
+        setTimeout(() => reject(new Error("Vision model timeout")), 15000),
       ),
     ]).catch((err) => {
       visionPromise = null;
-      visionRetryAfter = Date.now() + 60000;
+      visionRetryAfter = Date.now() + 20000;
       throw err;
     });
   }
@@ -897,9 +1326,28 @@ function buildFacePts(
     restMouthRatio,
     rightEyeCenter,
     leftEyeCenter,
-    rEyeRx,
-    lEyeRx,
+    rEyeShape.center,
+    lEyeShape.center,
+    rightEyeAxis,
+    leftEyeAxis,
+    rEyeShape.curve,
+    lEyeShape.curve,
+    rIrisR,
+    lIrisR,
+    aspect,
   );
+
+  const restCenterY = (landmarks[13]![1] + landmarks[14]![1]) * 0.5;
+  const restCenterX = (landmarks[61]![0] + landmarks[291]![0]) * 0.5;
+  const projMouthY = (idx: number) => {
+    const pt = landmarks[idx]!;
+    return (
+      ((pt[0] - restCenterX) * aspect * mouthAxis.vx + (pt[1] - restCenterY) * mouthAxis.vy) /
+      mouthW
+    );
+  };
+  const restMouthTopY = Math.min(-0.004, projMouthY(13));
+  const restMouthBotY = Math.max(0.004, projMouthY(14));
 
   return {
     landmarks,
@@ -917,21 +1365,23 @@ function buildFacePts(
     mouthH,
     jawSpan,
     restMouthRatio,
+    restMouthTopY,
+    restMouthBotY,
     hasVisibleTeeth: analysis.hasVisibleTeeth,
     isMouthParted: analysis.isMouthParted,
     restTeethDepth: analysis.restTeethDepth,
     yaw,
     stylized,
-    rightPupil: rightEyeCenter,
-    leftPupil: leftEyeCenter,
+    rightPupil: analysis.rightPupil,
+    leftPupil: analysis.leftPupil,
     rightEyeCenter: rEyeShape.center,
     leftEyeCenter: lEyeShape.center,
     rightEyeRadius: [rEyeRx, rEyeRy],
     leftEyeRadius: [lEyeRx, lEyeRy],
-    rightEyeCurve: rEyeShape.curve,
-    leftEyeCurve: lEyeShape.curve,
-    rightIrisRadius: rIrisR,
-    leftIrisRadius: lIrisR,
+    rightEyeCurve: analysis.rightEyeCurve,
+    leftEyeCurve: analysis.leftEyeCurve,
+    rightIrisRadius: analysis.rightIrisRadius,
+    leftIrisRadius: analysis.leftIrisRadius,
     rightEar,
     leftEar,
     hairTop,
@@ -975,7 +1425,7 @@ export async function detectFace(
       console.warn("MediaPipe vision models unavailable, using fallback keypoints", modelErr);
     }
 
-    const detCanvas = toDetectionCanvas(img, 640);
+    const detCanvas = toDetectionCanvas(img, 1024);
 
     // Stage 1: Direct MediaPipe 468/478-landmark detection
     let rawLandmarks: Array<{ x: number; y: number; z?: number }> | undefined;

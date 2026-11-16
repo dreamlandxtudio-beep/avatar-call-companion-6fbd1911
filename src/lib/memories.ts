@@ -8,9 +8,16 @@ export function clearMemoryCache() {
   activeUser = "";
 }
 export async function readMemories(characterId: string) {
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  let user: { id: string } | null | undefined;
+  if (typeof supabase.auth.getSession === "function") {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+    user = session?.user;
+  } else {
+    const { data } = await supabase.auth.getUser();
+    user = data?.user;
+  }
   if (!user) {
     clearMemoryCache();
     return [];

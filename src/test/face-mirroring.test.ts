@@ -2,6 +2,8 @@ import { describe, expect, it, vi } from "vitest";
 import { expressionFromSignals } from "@/lib/face-signals";
 import { createExpressionEngine, stepExpressionEngine } from "@/lib/expressionEngine";
 import { voiceProsody } from "@/lib/voice-prosody";
+import { defaultVoiceForGender } from "@/lib/store";
+import { defaultGeminiVoiceForGender } from "@/lib/voice";
 import type { UserFaceObservation } from "@/lib/userCamera";
 
 const face: UserFaceObservation = {
@@ -95,5 +97,97 @@ describe("Observable expression mirroring", () => {
     expect(mFrame.blinkL).toBeGreaterThan(0.9);
     expect(mFrame.blinkR).toBeLessThan(0.1);
     expect(mFrame.smileL).toBeGreaterThan(mFrame.smileR + 0.3);
+  });
+
+  it("maintains eye contact while listening and turns head to the side while thinking", () => {
+    const state = createExpressionEngine(0);
+    // Rare wink: nextWinkAt should start at least 45 seconds in the future
+    expect(state.nextWinkAt).toBeGreaterThanOrEqual(45000);
+
+    // Side thinking pose turns head + looks toward the chosen side
+    state.poseMode = "thinkSide";
+    state.poseDir = 1;
+    state.poseUntil = 3000;
+    let thinkFrame = stepExpressionEngine(state, 500, {
+      ...options,
+      mirrorMode: false,
+      listening: false,
+    });
+    for (let t = 550; t <= 1400; t += 50) {
+      thinkFrame = stepExpressionEngine(state, t, {
+        ...options,
+        mirrorMode: false,
+        listening: false,
+      });
+    }
+    expect(thinkFrame.headYaw).toBeGreaterThan(0.2);
+    expect(thinkFrame.gazeX).toBeGreaterThan(0.3);
+
+    // Switching to listening snaps gaze straight back onto the user's eyes
+    let listenFrame = stepExpressionEngine(state, 1450, {
+      ...options,
+      mirrorMode: false,
+      listening: true,
+    });
+    for (let t = 1500; t <= 2000; t += 50) {
+      listenFrame = stepExpressionEngine(state, t, {
+        ...options,
+        mirrorMode: false,
+        listening: true,
+      });
+    }
+    expect(Math.abs(listenFrame.gazeX)).toBeLessThan(0.12);
+    expect(Math.abs(listenFrame.gazeY)).toBeLessThan(0.1);
+  });
+
+  it("engages forward camera lean, brow pinch, and nose scrunch on intense emotions", () => {
+    const state = createExpressionEngine(0);
+    let angryFrame = stepExpressionEngine(state, 50, {
+      ...options,
+      mirrorMode: false,
+      emotion: "angry",
+    });
+    for (let t = 100; t <= 900; t += 50) {
+      angryFrame = stepExpressionEngine(state, t, {
+        ...options,
+        mirrorMode: false,
+        emotion: "angry",
+      });
+    }
+    expect(angryFrame.innerBrowPinch).toBeGreaterThan(0.3);
+    expect(angryFrame.noseFlare).toBeGreaterThan(0.25);
+    expect(angryFrame.forwardLean).toBeGreaterThan(0.1);
+
+    let listenFrame = angryFrame;
+    for (let t = 950; t <= 1700; t += 50) {
+      listenFrame = stepExpressionEngine(state, t, {
+        ...options,
+        mirrorMode: false,
+        listening: true,
+        emotion: "neutral",
+      });
+    }
+    expect(listenFrame.forwardLean).toBeGreaterThan(0.1);
+  });
+
+  it("assigns distinct natural male and female voices without cross-gender fallback", () => {
+    expect(defaultGeminiVoiceForGender("male")).toBe("Charon");
+    expect(defaultGeminiVoiceForGender("female")).toBe("Kore");
+    expect(defaultVoiceForGender("male", { engine: "gemini", id: "Kore" })).toEqual({
+      engine: "gemini",
+      id: "Charon",
+    });
+    expect(defaultVoiceForGender("female", { engine: "gemini", id: "Charon" })).toEqual({
+      engine: "gemini",
+      id: "Kore",
+    });
+    expect(defaultVoiceForGender("male", { engine: "kokoro", id: "af_heart" })).toEqual({
+      engine: "kokoro",
+      id: "am_michael",
+    });
+    expect(defaultVoiceForGender("female", { engine: "gemini", id: "Gacrux" })).toEqual({
+      engine: "gemini",
+      id: "Gacrux",
+    });
   });
 });

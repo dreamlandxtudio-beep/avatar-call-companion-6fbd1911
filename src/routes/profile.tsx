@@ -106,6 +106,7 @@ function ProfilePage() {
   const [urlMessage, setUrlMessage] = useState("");
   const [voiceError, setVoiceError] = useState("");
   const [voiceTab, setVoiceTab] = useState<"all" | "gemini" | "kokoro" | "system">("all");
+  const [voiceGenderFilter, setVoiceGenderFilter] = useState<"all" | "female" | "male">("all");
 
   useEffect(() => {
     detectWebGPU().then(setHasGPU);
@@ -349,7 +350,10 @@ function ProfilePage() {
                 <button
                   key={g}
                   type="button"
-                  onClick={() => setProfile({ gender: g })}
+                  onClick={() => {
+                    setProfile({ gender: g });
+                    if (voiceGenderFilter !== "all") setVoiceGenderFilter(g);
+                  }}
                   className={`min-h-[42px] rounded-xl border py-2.5 text-sm font-bold transition-colors ${
                     gender === g
                       ? "border-primary bg-primary text-primary-foreground btn-metallic"
@@ -377,13 +381,22 @@ function ProfilePage() {
                   ))}
                 </optgroup>
                 {!p.localOnly && (
-                  <optgroup label={`Voces naturales · Gemini (${GEMINI_VOICES.length})`}>
-                    {GEMINI_VOICES.map((v) => (
-                      <option key={v.id} value={`gemini|${v.id}`}>
-                        {v.label}
-                      </option>
-                    ))}
-                  </optgroup>
+                  <>
+                    <optgroup label="Voces naturales · Mujer (Gemini)">
+                      {GEMINI_VOICES.filter((v) => v.gender === "female").map((v) => (
+                        <option key={v.id} value={`gemini|${v.id}`}>
+                          {v.label}
+                        </option>
+                      ))}
+                    </optgroup>
+                    <optgroup label="Voces naturales · Hombre (Gemini)">
+                      {GEMINI_VOICES.filter((v) => v.gender === "male").map((v) => (
+                        <option key={v.id} value={`gemini|${v.id}`}>
+                          {v.label}
+                        </option>
+                      ))}
+                    </optgroup>
+                  </>
                 )}
                 <optgroup label={`Voces locales · Kokoro (${KOKORO_VOICES.length} EN)`}>
                   {KOKORO_VOICES.map((v) => (
@@ -396,38 +409,66 @@ function ProfilePage() {
             </div>
 
             <div className="rounded-xl border border-border bg-card/70 p-3">
-              <div className="filter-tabs-scroll mb-2.5" role="tablist" aria-label="Filtrar voces">
-                {(
-                  [
-                    ["all", "Todas"],
-                    ...(!p.localOnly
-                      ? ([["gemini", `Naturales (${GEMINI_VOICES.length})`]] as const)
-                      : []),
-                    ["kokoro", `Kokoro offline (${KOKORO_VOICES.length})`],
-                    ["system", "Dispositivo"],
-                  ] as const
-                ).map(([tid, label]) => (
-                  <button
-                    key={tid}
-                    type="button"
-                    role="tab"
-                    aria-selected={voiceTab === tid}
-                    onClick={() => setVoiceTab(tid)}
-                    className={`min-h-[36px] shrink-0 whitespace-nowrap rounded-lg px-3 py-1.5 text-xs font-extrabold transition-colors ${
-                      voiceTab === tid
-                        ? "bg-primary text-primary-foreground btn-metallic"
-                        : "bg-secondary/80 text-muted-foreground hover:text-foreground"
-                    }`}
-                  >
-                    {label}
-                  </button>
-                ))}
+              <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                <div className="filter-tabs-scroll" role="tablist" aria-label="Filtrar voces">
+                  {(
+                    [
+                      ["all", "Todas"],
+                      ...(!p.localOnly
+                        ? ([["gemini", `Naturales (${GEMINI_VOICES.length})`]] as const)
+                        : []),
+                      ["kokoro", `Kokoro offline (${KOKORO_VOICES.length})`],
+                      ["system", "Dispositivo"],
+                    ] as const
+                  ).map(([tid, label]) => (
+                    <button
+                      key={tid}
+                      type="button"
+                      role="tab"
+                      aria-selected={voiceTab === tid}
+                      onClick={() => setVoiceTab(tid)}
+                      className={`min-h-[34px] shrink-0 whitespace-nowrap rounded-lg px-3 py-1.5 text-xs font-extrabold transition-colors ${
+                        voiceTab === tid
+                          ? "bg-primary text-primary-foreground btn-metallic"
+                          : "bg-secondary/80 text-muted-foreground hover:text-foreground"
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+                {voiceTab !== "system" && (
+                  <div className="flex items-center gap-1">
+                    {(
+                      [
+                        ["all", "Ambas"],
+                        ["female", "Mujer"],
+                        ["male", "Hombre"],
+                      ] as const
+                    ).map(([gf, glabel]) => (
+                      <button
+                        key={gf}
+                        type="button"
+                        onClick={() => setVoiceGenderFilter(gf)}
+                        className={`min-h-[30px] rounded-lg px-2.5 py-1 text-[11px] font-bold transition-colors ${
+                          voiceGenderFilter === gf
+                            ? "bg-primary/20 text-primary ring-1 ring-primary/40"
+                            : "bg-secondary/60 text-muted-foreground hover:text-foreground"
+                        }`}
+                      >
+                        {glabel}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
 
               <div className="grid max-h-60 gap-2 overflow-y-auto pr-1 sm:grid-cols-2">
                 {!p.localOnly &&
                   (voiceTab === "all" || voiceTab === "gemini") &&
-                  GEMINI_VOICES.map((v) => {
+                  GEMINI_VOICES.filter(
+                    (v) => voiceGenderFilter === "all" || v.gender === voiceGenderFilter,
+                  ).map((v) => {
                     const active = p.voice.engine === "gemini" && p.voice.id === v.id;
                     return (
                       <div
@@ -443,7 +484,12 @@ function ProfilePage() {
                           onClick={() => void pickVoice(`gemini|${v.id}`)}
                           className="min-w-0 flex-1 text-left"
                         >
-                          <p className="truncate font-black">{v.id}</p>
+                          <p className="truncate font-black">
+                            {v.id}{" "}
+                            <span className="ml-1 text-[10px] font-semibold text-primary/80">
+                              {v.gender === "male" ? "Hombre" : "Mujer"}
+                            </span>
+                          </p>
                           <p className="truncate text-[11px] font-semibold text-muted-foreground">
                             {v.label.split("·")[1]?.trim() ?? v.label}
                           </p>
@@ -478,7 +524,9 @@ function ProfilePage() {
                   })}
 
                 {(voiceTab === "all" || voiceTab === "kokoro") &&
-                  KOKORO_VOICES.map((v) => {
+                  KOKORO_VOICES.filter(
+                    (v) => voiceGenderFilter === "all" || v.gender === voiceGenderFilter,
+                  ).map((v) => {
                     const active = p.voice.engine === "kokoro" && p.voice.id === v.id;
                     return (
                       <div

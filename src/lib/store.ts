@@ -50,6 +50,7 @@ const FEMALE_VOICES = new Set([
   "Autonoe",
   "Callirrhoe",
   "Despina",
+  "Gacrux",
   "Erinome",
   "af_heart",
   "af_bella",
@@ -69,7 +70,6 @@ const MALE_VOICES = new Set([
   "Orus",
   "Algenib",
   "Achird",
-  "Gacrux",
   "Umbriel",
   "Sadachbia",
   "am_michael",
@@ -96,9 +96,13 @@ export function defaultVoiceForGender(
   }
   if (gender === "male") {
     if (current && (current.engine === "system" || MALE_VOICES.has(current.id))) return current;
+    if (current?.engine === "gemini") return { engine: "gemini", id: "Charon" };
+    if (current?.engine === "kokoro") return { engine: "kokoro", id: "am_michael" };
     return { ...DEFAULT_DEVICE_VOICE };
   }
   if (current && (current.engine === "system" || FEMALE_VOICES.has(current.id))) return current;
+  if (current?.engine === "gemini") return { engine: "gemini", id: "Kore" };
+  if (current?.engine === "kokoro") return { engine: "kokoro", id: "af_heart" };
   return { ...DEFAULT_DEVICE_VOICE };
 }
 

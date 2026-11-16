@@ -44,7 +44,7 @@ export async function handleApiChat(request: Request): Promise<Response> {
           controller.enqueue(encoder.encode("data: [DONE]\n\n"));
           controller.close();
         } catch (err) {
-          const message = err instanceof Error ? err.message : String(err);
+          const { message } = providerError(err);
           controller.enqueue(encoder.encode(`data: ${JSON.stringify({ error: message })}\n\n`));
           controller.close();
         }
@@ -59,9 +59,9 @@ export async function handleApiChat(request: Request): Promise<Response> {
       },
     });
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
+    const { message, status } = providerError(err);
     return new Response(JSON.stringify({ error: message }), {
-      status: 500,
+      status,
       headers: { "Content-Type": "application/json; charset=utf-8" },
     });
   }
@@ -108,9 +108,9 @@ export async function handleApiTranscribe(request: Request): Promise<Response> {
       headers: { "Content-Type": "application/json; charset=utf-8" },
     });
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
+    const { message, status } = providerError(err);
     return new Response(JSON.stringify({ error: message }), {
-      status: 500,
+      status,
       headers: { "Content-Type": "application/json; charset=utf-8" },
     });
   }

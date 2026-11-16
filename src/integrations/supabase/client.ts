@@ -54,6 +54,172 @@ function createSupabaseFetch(supabaseUrl: string, supabaseKey: string): typeof f
   };
 }
 
+function createMockSupabaseClient(): ReturnType<typeof createClient<Database>> {
+  const SESSION_KEY = "aistudio.mock.supabase.session";
+  const TABLE_KEY = "aistudio.mock.supabase.character_memories";
+  type Listener = (event: string, session: unknown) => void;
+  const listeners = new Set<Listener>();
+  const memoryTables = new Map<string, Array<Record<string, unknown>>>();
+
+  const readSession = () => {
+    if (typeof window === "undefined") return null;
+    try {
+      const raw = localStorage.getItem(SESSION_KEY);
+      return raw ? JSON.parse(raw) : null;
+    } catch {
+      return null;
+    }
+  };
+  const writeSession = (session: unknown) => {
+    if (typeof window === "undefined") return;
+    try {
+      if (session) localStorage.setItem(SESSION_KEY, JSON.stringify(session));
+      else localStorage.removeItem(SESSION_KEY);
+    } catch {
+      /* ignore */
+    }
+  };
+  const readRows = (table: string): Array<Record<string, unknown>> => {
+    if (typeof window !== "undefined" && table === "character_memories") {
+      try {
+        const raw = localStorage.getItem(TABLE_KEY);
+        if (raw) return JSON.parse(raw) as Array<Record<string, unknown>>;
+      } catch {
+        /* ignore */
+      }
+    }
+    return memoryTables.get(table) ?? [];
+  };
+  const writeRows = (table: string, rows: Array<Record<string, unknown>>) => {
+    memoryTables.set(table, rows);
+    if (typeof window !== "undefined" && table === "character_memories") {
+      try {
+        localStorage.setItem(TABLE_KEY, JSON.stringify(rows));
+      } catch {
+        /* ignore */
+      }
+    }
+  };
+
+  let currentSession = readSession();
+  const notify = (event: string, session: unknown) => {
+    listeners.forEach((cb) => cb(event, session));
+  };
+
+  const makeAuthSession = (email: string) => ({
+    access_token: "mock-access-token",
+    user: { id: `local-${email.toLowerCase()}`, email },
+  });
+
+  const auth = {
+    getSession: async () => ({ data: { session: currentSession }, error: null }),
+    getUser: async () => ({ data: { user: currentSession?.user ?? null }, error: null }),
+    onAuthStateChange: (cb: Listener) => {
+      listeners.add(cb);
+      return {
+        data: {
+          subscription: {
+            unsubscribe: () => {
+              listeners.delete(cb);
+            },
+          },
+        },
+      };
+    },
+    signInWithPassword: async ({ email }: { email: string }) => {
+      currentSession = makeAuthSession(email);
+      writeSession(currentSession);
+      notify("SIGNED_IN", currentSession);
+      return { data: { user: currentSession.user, session: currentSession }, error: null };
+    },
+    signUp: async ({ email }: { email: string }) => {
+      currentSession = makeAuthSession(email);
+      writeSession(currentSession);
+      notify("SIGNED_IN", currentSession);
+      return { data: { user: currentSession.user, session: currentSession }, error: null };
+    },
+    signOut: async () => {
+      currentSession = null;
+      writeSession(null);
+      notify("SIGNED_OUT", null);
+      return { error: null };
+    },
+    resetPasswordForEmail: async () => ({ data: {}, error: null }),
+    updateUser: async () => ({ data: { user: currentSession?.user ?? null }, error: null }),
+    setSession: async (tokens: { access_token?: string }) => {
+      currentSession = {
+        access_token: tokens.access_token ?? "mock-access-token",
+        user: { id: "local-oauth-user", email: "local@example.com" },
+      };
+      writeSession(currentSession);
+      notify("SIGNED_IN", currentSession);
+      return { data: { user: currentSession.user, session: currentSession }, error: null };
+    },
+  };
+
+  const from = (table: string) => ({
+    select: () => {
+      const filters: Array<[string, unknown]> = [];
+      const chain = {
+        eq: (col: string, val: unknown) => {
+          filters.push([col, val]);
+          return chain;
+        },
+        order: async () => {
+          const rows = readRows(table).filter((r) => filters.every(([c, v]) => r[c] === v));
+          return { data: rows, error: null };
+        },
+      };
+      return chain;
+    },
+    insert: async (payload: Record<string, unknown> | Array<Record<string, unknown>>) => {
+      const items = Array.isArray(payload) ? payload : [payload];
+      const rows = readRows(table);
+      const inserted = items.map((item) => ({
+        id: `mem-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        created_at: new Date().toISOString(),
+        ...item,
+      }));
+      writeRows(table, [...rows, ...inserted]);
+      return { data: inserted, error: null };
+    },
+    update: (patch: Record<string, unknown>) => {
+      const filters: Array<[string, unknown]> = [];
+      const chain = {
+        eq: (col: string, val: unknown) => {
+          filters.push([col, val]);
+          return chain;
+        },
+        then: (resolve: (val: { data: unknown; error: null }) => void) => {
+          const rows = readRows(table).map((r) =>
+            filters.every(([c, v]) => r[c] === v) ? { ...r, ...patch } : r,
+          );
+          writeRows(table, rows);
+          resolve({ data: null, error: null });
+        },
+      };
+      return chain;
+    },
+    delete: () => {
+      const filters: Array<[string, unknown]> = [];
+      const chain = {
+        eq: (col: string, val: unknown) => {
+          filters.push([col, val]);
+          return chain;
+        },
+        then: (resolve: (val: { data: unknown; error: null }) => void) => {
+          const rows = readRows(table).filter((r) => !filters.every(([c, v]) => r[c] === v));
+          writeRows(table, rows);
+          resolve({ data: null, error: null });
+        },
+      };
+      return chain;
+    },
+  });
+
+  return { auth, from } as unknown as ReturnType<typeof createClient<Database>>;
+}
+
 function createSupabaseClient() {
   // Use import.meta.env for client-side (Vite build-time replacement)
   // Fall back to process.env for SSR (server-side rendering)
@@ -62,13 +228,8 @@ function createSupabaseClient() {
     import.meta.env["VITE_SUPABASE_PUBLISHABLE_KEY"] || process.env["SUPABASE_PUBLISHABLE_KEY"];
 
   if (!SUPABASE_URL || !SUPABASE_PUBLISHABLE_KEY) {
-    const missing = [
-      ...(!SUPABASE_URL ? ["SUPABASE_URL"] : []),
-      ...(!SUPABASE_PUBLISHABLE_KEY ? ["SUPABASE_PUBLISHABLE_KEY"] : []),
-    ];
-    const message = `Missing Supabase environment variable(s): ${missing.join(", ")}. Connect Supabase in Lovable Cloud.`;
-    console.error(`[Supabase] ${message}`);
-    throw new Error(message);
+    console.warn("[AI Studio] Supabase env vars not configured — using local mock client.");
+    return createMockSupabaseClient();
   }
 
   return createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {

@@ -122,6 +122,7 @@ function Call() {
   const textModeRef = useRef(false);
   const userVideoRef = useRef<HTMLVideoElement>(null);
   const camStreamRef = useRef<MediaStream | null>(null);
+  const camRequestRef = useRef<Promise<boolean> | null>(null);
   const userFaceRef = useRef<UserFaceObservation | undefined>(undefined);
   const recentUserLaughRef = useRef(0);
   const lastCameraLaughRef = useRef(0);
@@ -154,6 +155,10 @@ function Call() {
 
   useEffect(() => {
     alive.current = true;
+    // Enable user's camera by default on video call entry
+    if (canUseCamera()) {
+      void requestCamera();
+    }
     return () => {
       alive.current = false;
       callTokenRef.current += 1;
@@ -222,40 +227,51 @@ function Call() {
   }, [camActive, userFace?.detected, userFace?.emotion, phase]);
 
   const requestCamera = async (): Promise<boolean> => {
-    if (!canUseCamera()) {
-      setCamNote("Este navegador no permite acceso a la cámara.");
-      return false;
-    }
-    if (camStreamRef.current) {
-      const live = camStreamRef.current.getVideoTracks().some((t) => t.readyState === "live");
-      if (live) {
-        setCamActive(true);
+    if (camRequestRef.current) return camRequestRef.current;
+    const run = (async (): Promise<boolean> => {
+      if (!canUseCamera()) {
+        setCamNote("Este navegador no permite acceso a la cámara.");
+        return false;
+      }
+      if (camStreamRef.current) {
+        const live = camStreamRef.current.getVideoTracks().some((t) => t.readyState === "live");
+        if (live) {
+          setCamActive(true);
+          setCamNote("");
+          return true;
+        }
+        stopUserCamera(camStreamRef.current);
+        camStreamRef.current = null;
+      }
+      const res = await startUserCamera();
+      if (!alive.current) {
+        stopUserCamera(res.stream);
+        return false;
+      }
+      if (res.stream) {
+        camStreamRef.current = res.stream;
         setCamNote("");
+        setCamActive(true);
         return true;
       }
-      stopUserCamera(camStreamRef.current);
-      camStreamRef.current = null;
-    }
-    const res = await startUserCamera();
-    if (!alive.current) {
-      stopUserCamera(res.stream);
+      if (res.error === "not-allowed") {
+        setCamNote("Cámara bloqueada: permite el acceso en tu navegador.");
+      } else if (res.error === "in-use") {
+        setCamNote("La cámara está ocupada por otra pestaña o app.");
+      } else {
+        setCamNote("No se detectó cámara disponible. Puedes volver a intentarlo.");
+      }
+      setCamActive(false);
       return false;
+    })();
+    camRequestRef.current = run;
+    try {
+      return await run;
+    } finally {
+      if (camRequestRef.current === run) {
+        camRequestRef.current = null;
+      }
     }
-    if (res.stream) {
-      camStreamRef.current = res.stream;
-      setCamNote("");
-      setCamActive(true);
-      return true;
-    }
-    if (res.error === "not-allowed") {
-      setCamNote("Cámara bloqueada: permite el acceso en tu navegador.");
-    } else if (res.error === "in-use") {
-      setCamNote("La cámara está ocupada por otra pestaña o app.");
-    } else {
-      setCamNote("No se detectó cámara disponible. Puedes volver a intentarlo.");
-    }
-    setCamActive(false);
-    return false;
   };
 
   const toggleCamera = async () => {
@@ -362,6 +378,7 @@ function Call() {
   const loop = async (token: number) => {
     if (loopActiveRef.current) return;
     loopActiveRef.current = true;
+    let consecutiveSttErrors = 0;
     try {
       while (isCallValid(token)) {
         if (mutedRef.current || !canListen() || textModeRef.current) {
@@ -395,10 +412,18 @@ function Call() {
           return;
         }
         if (res.error) {
+          consecutiveSttErrors++;
           setMicNote(res.error);
-          await new Promise((r) => setTimeout(r, 250));
+          if (consecutiveSttErrors >= 2) {
+            textModeRef.current = true;
+            setTextMode(true);
+            setPhase("paused");
+            return;
+          }
+          await new Promise((r) => setTimeout(r, 550));
           continue;
         }
+        consecutiveSttErrors = 0;
         if (!res.text) {
           await new Promise((r) => setTimeout(r, 80));
           continue;
@@ -434,7 +459,7 @@ function Call() {
 
     // Acquire microphone and camera independently in parallel inside this user gesture
     const wantMic = !preferTextMode && canListen();
-    const wantCam = !camStreamRef.current && canUseCamera();
+    const wantCam = !camStreamRef.current && !camRequestRef.current && canUseCamera();
     if (wantMic || wantCam) {
       const media = await acquireCallMedia(wantMic, wantCam);
       if (!isCallValid(token)) {
@@ -734,13 +759,13 @@ function Call() {
               aria-pressed={p.voice.engine === "gemini"}
               onClick={() => {
                 const char = findCharacterById(p.characterId);
+                const genderVoiceId = p.gender === "male" ? "Charon" : "Kore";
+                const studioVoice =
+                  char?.gender === p.gender && char?.studioVoice
+                    ? char.studioVoice
+                    : { engine: "gemini" as const, id: genderVoiceId };
                 const nextVoice =
-                  p.voice.engine === "gemini"
-                    ? { engine: "system" as const, id: "" }
-                    : (char?.studioVoice ?? {
-                        engine: "gemini" as const,
-                        id: p.gender === "male" ? "Charon" : "Kore",
-                      });
+                  p.voice.engine === "gemini" ? { engine: "system" as const, id: "" } : studioVoice;
                 setProfile({ voice: nextVoice });
               }}
               title="Alternar entre voz del dispositivo y voz neuronal natural"
@@ -748,7 +773,9 @@ function Call() {
             >
               <AudioLines className="h-3.5 w-3.5" />
               <span className="hidden md:inline">
-                {p.voice.engine === "gemini" ? "Voz natural" : "Voz local"}
+                {p.voice.engine === "gemini"
+                  ? `Voz natural · ${p.voice.id || (p.gender === "male" ? "Charon" : "Kore")}`
+                  : "Voz local"}
               </span>
             </Button>
           )}

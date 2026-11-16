@@ -120,7 +120,275 @@ export type AudioVisemes = {
   open: number;
   wide: number;
   round: number;
+  press?: number | undefined;
+  pucker?: number | undefined;
+  tongue?: number | undefined;
 };
+
+type VisemeCue = {
+  tStart: number;
+  tEnd: number;
+  open: number;
+  wide: number;
+  round: number;
+  press: number;
+  pucker: number;
+  tongue: number;
+};
+
+type VisemeTimeline = {
+  cues: VisemeCue[];
+  totalSec: number;
+  wordStartCues: Array<{ charIdx: number; sec: number }>;
+  startedAtMs: number;
+  startedAudioTime: number;
+  useAudioClock: boolean;
+  rate: number;
+};
+
+let activeTimeline: VisemeTimeline | null = null;
+
+function buildVisemeTimeline(text: string, estimatedSec: number, rate = 1): VisemeTimeline {
+  const cues: VisemeCue[] = [];
+  const wordStartCues: Array<{ charIdx: number; sec: number }> = [];
+  const chars = Array.from(text);
+
+  type Proto = Omit<VisemeCue, "tStart" | "tEnd"> & { weight: number; charIdx: number };
+  const protos: Proto[] = [];
+  let inWord = false;
+
+  for (let i = 0; i < chars.length; i++) {
+    const rawCh = chars[i]!;
+    const ch = rawCh.toLowerCase();
+    const isLetter = /[a-záéíóúüñ]/i.test(ch);
+    if (isLetter && !inWord) {
+      wordStartCues.push({ charIdx: i, sec: 0 });
+      inWord = true;
+    } else if (!isLetter) {
+      inWord = false;
+    }
+
+    if (/[aáàä]/i.test(ch)) {
+      protos.push({
+        open: 0.86,
+        wide: 0.24,
+        round: 0.04,
+        press: 0,
+        pucker: 0,
+        tongue: 0.06,
+        weight: 1.35,
+        charIdx: i,
+      });
+    } else if (/[eéèë]/i.test(ch)) {
+      protos.push({
+        open: 0.5,
+        wide: 0.68,
+        round: 0.0,
+        press: 0,
+        pucker: 0,
+        tongue: 0.14,
+        weight: 1.15,
+        charIdx: i,
+      });
+    } else if (/[iíìïy]/i.test(ch)) {
+      protos.push({
+        open: 0.28,
+        wide: 0.86,
+        round: 0.0,
+        press: 0,
+        pucker: 0,
+        tongue: 0.22,
+        weight: 1.05,
+        charIdx: i,
+      });
+    } else if (/[oóòö]/i.test(ch)) {
+      protos.push({
+        open: 0.58,
+        wide: 0.0,
+        round: 0.8,
+        press: 0,
+        pucker: 0.56,
+        tongue: 0.04,
+        weight: 1.25,
+        charIdx: i,
+      });
+    } else if (/[uúùüw]/i.test(ch)) {
+      protos.push({
+        open: 0.26,
+        wide: 0.0,
+        round: 0.94,
+        press: 0,
+        pucker: 0.88,
+        tongue: 0.04,
+        weight: 1.15,
+        charIdx: i,
+      });
+    } else if (/[pbm]/i.test(ch)) {
+      protos.push({
+        open: 0.0,
+        wide: 0.0,
+        round: 0.0,
+        press: 0.95,
+        pucker: 0.12,
+        tongue: 0.0,
+        weight: 0.78,
+        charIdx: i,
+      });
+    } else if (/[fv]/i.test(ch)) {
+      protos.push({
+        open: 0.14,
+        wide: 0.16,
+        round: 0.0,
+        press: 0.42,
+        pucker: 0.0,
+        tongue: 0.05,
+        weight: 0.72,
+        charIdx: i,
+      });
+    } else if (/[szcx]/i.test(ch)) {
+      protos.push({
+        open: 0.18,
+        wide: 0.44,
+        round: 0.08,
+        press: 0.08,
+        pucker: 0.0,
+        tongue: 0.16,
+        weight: 0.75,
+        charIdx: i,
+      });
+    } else if (/[tdlnrñ]/i.test(ch)) {
+      protos.push({
+        open: 0.28,
+        wide: 0.22,
+        round: 0.06,
+        press: 0.0,
+        pucker: 0.0,
+        tongue: 0.46,
+        weight: 0.72,
+        charIdx: i,
+      });
+    } else if (/[kgjh]/i.test(ch)) {
+      protos.push({
+        open: 0.34,
+        wide: 0.14,
+        round: 0.12,
+        press: 0.0,
+        pucker: 0.0,
+        tongue: 0.18,
+        weight: 0.7,
+        charIdx: i,
+      });
+    } else if (/[,;:]/.test(ch)) {
+      protos.push({
+        open: 0.02,
+        wide: 0.0,
+        round: 0.0,
+        press: 0.2,
+        pucker: 0.0,
+        tongue: 0.0,
+        weight: 1.6,
+        charIdx: i,
+      });
+    } else if (/[.!?…]/.test(ch)) {
+      protos.push({
+        open: 0.0,
+        wide: 0.0,
+        round: 0.0,
+        press: 0.28,
+        pucker: 0.0,
+        tongue: 0.0,
+        weight: 2.5,
+        charIdx: i,
+      });
+    } else if (/\s/.test(ch)) {
+      protos.push({
+        open: 0.1,
+        wide: 0.06,
+        round: 0.04,
+        press: 0.04,
+        pucker: 0.0,
+        tongue: 0.0,
+        weight: 0.35,
+        charIdx: i,
+      });
+    }
+  }
+
+  let totalW = 0;
+  for (const p of protos) totalW += p.weight;
+  const dur = Math.max(0.4, estimatedSec);
+  let curT = 0;
+  let wPtr = 0;
+  for (const p of protos) {
+    const dt = (p.weight / Math.max(1, totalW)) * dur;
+    while (wPtr < wordStartCues.length && wordStartCues[wPtr]!.charIdx <= p.charIdx) {
+      wordStartCues[wPtr]!.sec = curT;
+      wPtr++;
+    }
+    cues.push({
+      tStart: curT,
+      tEnd: curT + dt,
+      open: p.open,
+      wide: p.wide,
+      round: p.round,
+      press: p.press,
+      pucker: p.pucker,
+      tongue: p.tongue,
+    });
+    curT += dt;
+  }
+
+  return {
+    cues,
+    totalSec: dur,
+    wordStartCues,
+    startedAtMs: typeof performance !== "undefined" ? performance.now() : 0,
+    startedAudioTime: ctx ? ctx.currentTime : 0,
+    useAudioClock: false,
+    rate,
+  };
+}
+
+function sampleVisemeTimeline(
+  tl: VisemeTimeline | null,
+): Omit<VisemeCue, "tStart" | "tEnd"> | null {
+  if (!tl || tl.cues.length === 0) return null;
+  const elapsed =
+    tl.useAudioClock && ctx
+      ? Math.max(0, ctx.currentTime - tl.startedAudioTime)
+      : typeof performance !== "undefined"
+        ? Math.max(0, (performance.now() - tl.startedAtMs) * 0.001)
+        : 0;
+  if (elapsed >= tl.totalSec + 0.35) return null;
+
+  const t = Math.min(tl.totalSec - 0.001, Math.max(0, elapsed));
+  // Binary search active cue
+  let lo = 0;
+  let hi = tl.cues.length - 1;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (tl.cues[mid]!.tEnd < t) lo = mid + 1;
+    else hi = mid;
+  }
+  const cur = tl.cues[lo]!;
+  const next = tl.cues[Math.min(tl.cues.length - 1, lo + 1)]!;
+  const prev = tl.cues[Math.max(0, lo - 1)]!;
+  const span = Math.max(0.015, cur.tEnd - cur.tStart);
+  const f = Math.max(0, Math.min(1, (t - cur.tStart) / span));
+  // Coarticulation blend between previous -> current center -> next cue
+  const neighbor = f < 0.35 ? prev : f > 0.65 ? next : cur;
+  const wN = f < 0.35 ? (0.35 - f) * 1.15 : f > 0.65 ? (f - 0.65) * 1.15 : 0;
+  const wC = 1 - wN;
+
+  return {
+    open: cur.open * wC + neighbor.open * wN,
+    wide: cur.wide * wC + neighbor.wide * wN,
+    round: cur.round * wC + neighbor.round * wN,
+    press: cur.press * wC + neighbor.press * wN,
+    pucker: cur.pucker * wC + neighbor.pucker * wN,
+    tongue: cur.tongue * wC + neighbor.tongue * wN,
+  };
+}
 
 let timeBuf: Uint8Array<ArrayBuffer> | null = null;
 let freqBuf: Uint8Array<ArrayBuffer> | null = null;
@@ -139,6 +407,8 @@ export function audioLevel(): number {
 }
 
 export function audioVisemes(): AudioVisemes {
+  const cue = sampleVisemeTimeline(activeTimeline);
+
   if (analyser && current && ctx) {
     const level = audioLevel();
     if (!freqBuf || freqBuf.length !== analyser.frequencyBinCount) {
@@ -159,13 +429,55 @@ export function audioVisemes(): AudioVisemes {
     };
 
     const low = avgRange(120, 420);
-    const mid = avgRange(420, 1200);
-    const high = avgRange(1200, 3400);
+    const mid = avgRange(420, 1250);
+    const high = avgRange(1250, 3400);
+    const sib = avgRange(3400, 6800);
 
-    const open = Math.min(1, level * 0.55 + mid * 0.85 + low * 0.35);
-    const wide = Math.min(1, Math.max(0, (high * 1.45 - low * 0.25) * (0.4 + level)));
-    const round = Math.min(1, Math.max(0, (low * 1.15 - high * 0.65) * (0.4 + level)));
-    return { level, open, wide, round };
+    // Acoustic RMS drop triggers brief bilabial seal (P/B/M) when text timeline agrees or sound pauses briefly
+    const silenceDip = level < 0.065 ? (0.065 - level) / 0.065 : 0;
+    const acousticOpen = Math.min(1, level * 0.52 + mid * 0.88 + low * 0.34 - sib * 0.25);
+    const acousticWide = Math.min(
+      1,
+      Math.max(0, (high * 1.48 - low * 0.28 + sib * 0.35) * (0.4 + level)),
+    );
+    const acousticRound = Math.min(1, Math.max(0, (low * 1.22 - high * 0.62) * (0.4 + level)));
+
+    if (cue) {
+      const voiceGate = Math.min(1, level * 2.2);
+      const press = Math.max(cue.press * (1 - voiceGate * 0.55), silenceDip * cue.press);
+      const open = Math.max(
+        0,
+        (acousticOpen * 0.68 + cue.open * voiceGate * 0.42) * (1 - press * 0.72),
+      );
+      const wide = Math.min(1, acousticWide * 0.62 + cue.wide * voiceGate * 0.48);
+      const round = Math.min(1, acousticRound * 0.58 + cue.round * voiceGate * 0.52);
+      const pucker = Math.min(1, round * 0.65 + cue.pucker * voiceGate * 0.45);
+      const tongue = Math.min(1, cue.tongue * voiceGate);
+      return { level, open, wide, round, press, pucker, tongue };
+    }
+
+    return {
+      level,
+      open: Math.max(0, acousticOpen),
+      wide: acousticWide,
+      round: acousticRound,
+      press: silenceDip * 0.35,
+      pucker: acousticRound * 0.65,
+      tongue: sib > 0.22 ? 0.22 : 0,
+    };
+  }
+
+  if (cue && fakeLevel > 0.01) {
+    const dyn = 0.75 + Math.min(0.4, fakeLevel * 0.45);
+    return {
+      level: Math.max(fakeLevel, cue.open * 0.85),
+      open: Math.min(1, cue.open * dyn * (1 - cue.press * 0.8)),
+      wide: Math.min(1, cue.wide * dyn),
+      round: Math.min(1, cue.round * dyn),
+      press: cue.press,
+      pucker: cue.pucker,
+      tongue: cue.tongue,
+    };
   }
 
   const t = typeof performance !== "undefined" ? performance.now() * 0.001 : 0;
@@ -174,6 +486,9 @@ export function audioVisemes(): AudioVisemes {
     open: fakeLevel,
     wide: fakeLevel > 0.05 ? (0.5 + 0.5 * Math.sin(t * 7.3)) * fakeLevel * 0.7 : 0,
     round: fakeLevel > 0.05 ? (0.5 + 0.5 * Math.cos(t * 5.7)) * fakeLevel * 0.55 : 0,
+    press: 0,
+    pucker: 0,
+    tongue: 0,
   };
 }
 
@@ -214,6 +529,7 @@ export function unlockAudio() {
 export function stopSpeaking() {
   speakAbort?.abort();
   speakAbort = null;
+  activeTimeline = null;
   try {
     current?.stop();
   } catch {
@@ -232,6 +548,7 @@ async function playAudioBuffer(
   buf: AudioBuffer,
   c: AudioContext,
   signal: AbortSignal,
+  spokenText?: string,
 ): Promise<boolean> {
   if (signal.aborted) return false;
   if (c.state === "suspended") {
@@ -242,6 +559,12 @@ async function playAudioBuffer(
   src.buffer = buf;
   src.connect(analyser!);
   current = src;
+  if (spokenText) {
+    const tl = buildVisemeTimeline(spokenText, buf.duration || 3, 1);
+    tl.useAudioClock = true;
+    tl.startedAudioTime = c.currentTime;
+    activeTimeline = tl;
+  }
   const maxMs = Math.min(25000, Math.max(1500, Math.round((buf.duration || 3) * 1000) + 1200));
   await new Promise<void>((resolve) => {
     let settled = false;
@@ -250,7 +573,10 @@ async function playAudioBuffer(
       settled = true;
       clearTimeout(watchdog);
       signal.removeEventListener("abort", onAbort);
-      if (current === src) current = null;
+      if (current === src) {
+        current = null;
+        activeTimeline = null;
+      }
       resolve();
     };
     const onAbort = () => {
@@ -353,12 +679,16 @@ async function speakViaGemini(
 
   try {
     const decoded = await c.decodeAudioData(arr.slice(0));
-    return await playAudioBuffer(decoded, c, signal);
+    return await playAudioBuffer(decoded, c, signal, clean);
   } catch {
     const fallbackBuf = decodePcm16Fallback(c, arr);
     if (!fallbackBuf) return false;
-    return await playAudioBuffer(fallbackBuf, c, signal);
+    return await playAudioBuffer(fallbackBuf, c, signal, clean);
   }
+}
+
+export function defaultGeminiVoiceForGender(gender?: "female" | "male"): string {
+  return gender === "male" ? "Charon" : "Kore";
 }
 
 export async function speak(
@@ -381,7 +711,8 @@ export async function speak(
 
   if (voice.engine === "gemini" && !opts?.localOnly) {
     try {
-      const ok = await speakViaGemini(clean, voice.id || "Kore", lang, ctrl.signal, emotion);
+      const geminiVoiceId = voice.id || defaultGeminiVoiceForGender(opts?.gender);
+      const ok = await speakViaGemini(clean, geminiVoiceId, lang, ctrl.signal, emotion);
       if (ok || ctrl.signal.aborted) return;
     } catch (e) {
       if (ctrl.signal.aborted) return;
@@ -393,8 +724,9 @@ export async function speak(
     try {
       await loadKokoro();
       if (ctrl.signal.aborted) return;
+      const kokoroVoiceId = voice.id || (opts?.gender === "male" ? "am_michael" : "af_heart");
       const a = await kokoro.generate(clean, {
-        voice: voice.id || "af_heart",
+        voice: kokoroVoiceId,
         speed: voiceProsody(emotion).rate,
       });
       if (ctrl.signal.aborted) return;
@@ -402,7 +734,7 @@ export async function speak(
       if (c) {
         const buf = c.createBuffer(1, a.audio.length, a.sampling_rate);
         buf.copyToChannel(a.audio, 0);
-        await playAudioBuffer(buf, c, ctrl.signal);
+        await playAudioBuffer(buf, c, ctrl.signal, clean);
         return;
       }
     } catch (e) {
@@ -422,6 +754,7 @@ export async function speak(
       if (settled) return;
       settled = true;
       ctrl.signal.removeEventListener("abort", onAbort);
+      activeTimeline = null;
       fakeLevel = 0;
       if (fakeTimer) {
         clearTimeout(fakeTimer);
@@ -438,12 +771,18 @@ export async function speak(
     };
     ctrl.signal.addEventListener("abort", onAbort, { once: true });
 
+    const prosody = voiceProsody(emotion);
+    const estWords = Math.max(1, clean.split(/\s+/).length);
+    const estDuration = Math.max(0.8, (clean.length / 13.5 + estWords * 0.04) / prosody.rate);
+
     const startCadence = () => {
       if (settled) return;
+      activeTimeline = buildVisemeTimeline(clean, estDuration, prosody.rate);
       const tick = () => {
         if (settled) return;
-        fakeLevel = 0.25 + Math.random() * 0.65;
-        fakeTimer = setTimeout(tick, 90);
+        const sampled = sampleVisemeTimeline(activeTimeline);
+        fakeLevel = sampled ? Math.max(0.08, sampled.open * 0.82 + 0.14) : 0.35;
+        fakeTimer = setTimeout(tick, 45);
       };
       tick();
     };
@@ -463,7 +802,6 @@ export async function speak(
 
     const u = new SpeechSynthesisUtterance(clean);
     u.lang = lang;
-    const prosody = voiceProsody(emotion);
     u.rate = prosody.rate;
     u.pitch = prosody.pitch;
     const v =
@@ -476,6 +814,18 @@ export async function speak(
       started = true;
       clearTimeout(noStartWatchdog);
       startCadence();
+    };
+    u.onboundary = (ev) => {
+      if (!activeTimeline || typeof ev.charIndex !== "number") return;
+      // Align viseme timeline phase dynamically to exact spoken word boundary
+      let matchedSec: number | null = null;
+      for (const w of activeTimeline.wordStartCues) {
+        if (w.charIdx <= ev.charIndex) matchedSec = w.sec;
+        else break;
+      }
+      if (matchedSec !== null) {
+        activeTimeline.startedAtMs = performance.now() - matchedSec * 1000;
+      }
     };
     u.onend = () => finish();
     u.onerror = (event) => {
@@ -632,9 +982,9 @@ export async function acquireCallMedia(
 }> {
   if (typeof navigator === "undefined" || !navigator.mediaDevices?.getUserMedia) {
     return {
-      micError: wantMic ? "not-supported" : undefined,
+      ...(wantMic ? { micError: "not-supported" } : {}),
       camStream: null,
-      camError: wantCam ? "not-found" : undefined,
+      ...(wantCam ? { camError: "not-found" as const } : {}),
     };
   }
 
@@ -689,9 +1039,9 @@ export async function acquireCallMedia(
   const [micRes, camRes] = await Promise.all([micPromise, camPromise]);
 
   return {
-    micError: micRes.fatalError,
+    ...(micRes.fatalError ? { micError: micRes.fatalError } : {}),
     camStream: camRes.camStream,
-    camError: camRes.camError,
+    ...(camRes.camError ? { camError: camRes.camError } : {}),
   };
 }
 
@@ -758,6 +1108,8 @@ function listenBrowserSpeech(lang: string, onInterim?: (t: string) => void): Pro
   });
 }
 
+let cloudSttBlockedUntil = 0;
+
 async function transcribeBlob(
   blob: Blob,
   lang: string,
@@ -770,7 +1122,7 @@ async function transcribeBlob(
   form.append("language", lang);
 
   const timeout = new AbortController();
-  const timer = setTimeout(() => timeout.abort(), 8500);
+  const timer = setTimeout(() => timeout.abort(), 10000);
   const onParentAbort = () => timeout.abort();
   signal.addEventListener("abort", onParentAbort, { once: true });
 
@@ -795,6 +1147,18 @@ async function transcribeBlob(
   }
 }
 
+async function runBrowserSpeechFallback(lang: string, opts: ListenOptions): Promise<ListenResult> {
+  opts.onStatus?.("listening");
+  const srRes = await listenBrowserSpeech(lang, opts.onInterim);
+  if (srRes.fatalError === "not-allowed" || srRes.fatalError === "service-not-allowed") {
+    const micCheck = await getMicStream();
+    if (micCheck.stream) {
+      return { text: "", fatalError: "speech-api-blocked" };
+    }
+  }
+  return srRes;
+}
+
 export async function listen(
   lang: string,
   onInterimOrOpts: ((t: string) => void) | ListenOptions,
@@ -802,16 +1166,9 @@ export async function listen(
   const opts: ListenOptions =
     typeof onInterimOrOpts === "function" ? { onInterim: onInterimOrOpts } : onInterimOrOpts;
 
-  if (opts.localOnly && SR()) {
-    opts.onStatus?.("listening");
-    const srRes = await listenBrowserSpeech(lang, opts.onInterim);
-    if (srRes.fatalError === "not-allowed" || srRes.fatalError === "service-not-allowed") {
-      const micCheck = await getMicStream();
-      if (micCheck.stream) {
-        return { text: "", fatalError: "speech-api-blocked" };
-      }
-    }
-    return srRes;
+  const hasBrowserSR = !!SR();
+  if ((opts.localOnly || Date.now() < cloudSttBlockedUntil) && hasBrowserSR) {
+    return runBrowserSpeechFallback(lang, opts);
   }
 
   if (typeof navigator === "undefined" || typeof MediaRecorder === "undefined") {
@@ -837,7 +1194,11 @@ export async function listen(
     try {
       recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
     } catch {
-      resolve({ text: "", fatalError: "not-supported" });
+      if (hasBrowserSR) {
+        void runBrowserSpeechFallback(lang, opts).then(resolve);
+      } else {
+        resolve({ text: "", fatalError: "not-supported" });
+      }
       return;
     }
 
@@ -934,14 +1295,13 @@ export async function listen(
         rms = Math.sqrt(sum / sampleBuf.length);
         deltaRms = Math.sqrt(diffSum / sampleBuf.length);
       }
-      // Emphasize loud vocal formants & immediately reject ambient background noise
       const speechEnergy = rms * 0.55 + deltaRms * 0.9;
       const level = Math.min(1, speechEnergy * 7.5);
       currentMicLevel = level;
       opts.onLevel?.(level);
 
       recentEnergies.push(speechEnergy);
-      if (recentEnergies.length > 5) recentEnergies.shift();
+      if (recentEnergies.length > 14) recentEnergies.shift();
 
       // Detect rapid rhythmic vocal bursts characteristic of human chuckles/laughter (ha-ha-ha)
       const pulseHi = Math.max(noiseFloor * 3.1, 0.032);
@@ -969,13 +1329,13 @@ export async function listen(
         } else {
           noiseFloor = noiseFloor * 0.92 + Math.min(speechEnergy, 0.028) * 0.08;
         }
-        noiseFloor = Math.min(0.028, Math.max(0.005, noiseFloor));
+        noiseFloor = Math.min(0.028, Math.max(0.0045, noiseFloor));
       }
 
-      // Sensitive adaptive VAD threshold so quiet laptop & phone mics trigger reliably
-      const startThreshold = Math.max(0.01, noiseFloor * 1.85);
+      // Sensitive adaptive VAD threshold that tolerates natural speech pauses without cutting off words
+      const startThreshold = Math.max(0.009, noiseFloor * 1.75);
       const keepThreshold = speechDetected
-        ? Math.max(0.009, noiseFloor * 1.75, Math.min(0.045, peakSpeechEnergy * 0.36))
+        ? Math.max(0.0085, noiseFloor * 1.6, Math.min(0.032, peakSpeechEnergy * 0.24))
         : startThreshold;
 
       if (speechEnergy > keepThreshold) {
@@ -992,7 +1352,7 @@ export async function listen(
         } else {
           peakSpeechEnergy = Math.max(peakSpeechEnergy * 0.985, speechEnergy);
           resumeVoiceFrames++;
-          if (resumeVoiceFrames >= 2) {
+          if (resumeVoiceFrames >= 1) {
             silenceMs = 0;
           }
         }
@@ -1003,28 +1363,28 @@ export async function listen(
           silenceMs += 50;
           const elapsed = Date.now() - speechStartedAt;
           const maxRecent = recentEnergies.length > 0 ? Math.max(...recentEnergies) : speechEnergy;
-          const quietWindow = recentEnergies.length >= 5 && maxRecent < keepThreshold;
-          if ((silenceMs >= 220 || quietWindow) && elapsed >= 180) {
+          const quietWindow = recentEnergies.length >= 14 && maxRecent < keepThreshold;
+          if ((silenceMs >= 750 || quietWindow) && elapsed >= 340) {
             stopRecorder();
           }
         }
       }
     }, 50);
 
-    // If user hasn't started speaking after 8s, recycle cleanly without burning a transcription call
+    // If user hasn't started speaking after 9s, recycle cleanly without burning a transcription call
     const idleTimer = setTimeout(() => {
       if (!speechDetected && !manualFinish && !aborted) {
         stopRecorder();
       }
-    }, 8000);
+    }, 9000);
 
-    // Max single turn length (14s)
+    // Max single turn length (16s)
     const maxTimer = setTimeout(() => {
       if (!aborted) {
         manualFinish = speechDetected || manualFinish;
         stopRecorder();
       }
-    }, 14000);
+    }, 16000);
 
     recorder.ondataavailable = (e) => {
       if (e.data && e.data.size > 0) chunks.push(e.data);
@@ -1038,7 +1398,7 @@ export async function listen(
       }
 
       const blob = new Blob(chunks, { type: recorder.mimeType || mimeType || "audio/webm" });
-      if ((!speechDetected && !manualFinish) || blob.size < 600) {
+      if ((!speechDetected && !manualFinish) || blob.size < 350) {
         resolve({ text: "" });
         return;
       }
@@ -1049,20 +1409,37 @@ export async function listen(
         resolve({ text: "" });
         return;
       }
+      if (error && hasBrowserSR) {
+        // Cloud STT failed (e.g., invalid/missing key or network issue): transparently activate browser SpeechRecognition
+        cloudSttBlockedUntil = Date.now() + 90_000;
+        const srRes = await runBrowserSpeechFallback(lang, opts);
+        if (!srRes.fatalError) {
+          resolve(srRes);
+          return;
+        }
+      }
       if (text) opts.onInterim?.(text);
       resolve({ text, error });
     };
 
     recorder.onerror = () => {
       cleanupAudioNodes();
-      resolve({ text: "", fatalError: "audio-capture" });
+      if (hasBrowserSR) {
+        void runBrowserSpeechFallback(lang, opts).then(resolve);
+      } else {
+        resolve({ text: "", fatalError: "audio-capture" });
+      }
     };
 
     try {
       recorder.start(200);
     } catch {
       cleanupAudioNodes();
-      resolve({ text: "", fatalError: "start-failed" });
+      if (hasBrowserSR) {
+        void runBrowserSpeechFallback(lang, opts).then(resolve);
+      } else {
+        resolve({ text: "", fatalError: "start-failed" });
+      }
     }
   });
 }

@@ -470,7 +470,7 @@ async function replyCloud(
         model: model.repo,
         systemInstruction: systemPrompt(p, callMode, visualContext),
         history: serializeHistory(history),
-        ...(callMode ? { maxOutputTokens: 96 } : {}),
+        ...(callMode ? { maxOutputTokens: 76 } : {}),
       }),
     });
 
@@ -531,7 +531,10 @@ export async function replyWithEmotion(
 ): Promise<{ text: string; emotion: AvatarEmotion; gifTag?: string | undefined }> {
   if (p.characterId) {
     try {
-      await readMemories(p.characterId);
+      await Promise.race([
+        readMemories(p.characterId),
+        new Promise<void>((resolve) => setTimeout(resolve, 180)),
+      ]);
     } catch {
       /* explicit memory UI handles retrieval errors */
     }

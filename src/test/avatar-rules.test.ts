@@ -56,4 +56,15 @@ describe("Avatar and private memory rules", () => {
         "Google ha agotado la cuota de voz. Revisa el límite y la facturación de Google AI Studio.",
     });
   });
+  it("translates invalid Gemini API keys into a clear actionable Spanish error", () => {
+    const res = providerError(
+      new Error(
+        JSON.stringify({
+          error: { code: 400, status: "INVALID_ARGUMENT", message: "API key not valid." },
+        }),
+      ),
+    );
+    expect(res.status).toBe(400);
+    expect(res.message).toContain("GEMINI_API_KEY");
+  });
 });

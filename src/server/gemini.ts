@@ -8,7 +8,17 @@ export type ChatHistoryMsg = {
 export type CloudModelName = "gemini-3.1-flash-lite" | "gemini-4-hydrogen";
 
 let client: GoogleGenAI | null = null;
+let clientKey = "";
 let betaClient: GoogleGenAI | null = null;
+let betaClientKey = "";
+
+function activeKeyFingerprint(): string {
+  return (
+    process.env["UDC_GOOGLE_AI_STUDIO_API_KEY"]?.trim() ||
+    process.env["GEMINI_API_KEY"]?.trim() ||
+    ""
+  );
+}
 
 function buildClientConfig(apiVersion?: string) {
   const connectorKey = process.env["UDC_GOOGLE_AI_STUDIO_API_KEY"]?.trim();
@@ -44,15 +54,19 @@ function buildClientConfig(apiVersion?: string) {
 }
 
 function getClient() {
-  if (!client) {
+  const key = activeKeyFingerprint();
+  if (!client || clientKey !== key) {
     client = new GoogleGenAI(buildClientConfig());
+    clientKey = key;
   }
   return client;
 }
 
 function getBetaClient() {
-  if (!betaClient) {
+  const key = activeKeyFingerprint();
+  if (!betaClient || betaClientKey !== key) {
     betaClient = new GoogleGenAI(buildClientConfig("v1beta"));
+    betaClientKey = key;
   }
   return betaClient;
 }
@@ -144,7 +158,7 @@ export async function transcribeAudio(opts: {
         contents,
       }),
       new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error("TRANSCRIBE_TIMEOUT")), 1500),
+        setTimeout(() => reject(new Error("TRANSCRIBE_TIMEOUT")), 2400),
       ),
     ]);
     rawText = response.text ?? "";
