@@ -453,10 +453,16 @@ function analyzePhotoFeatures(
         let sumW = 0;
         let sumX = 0;
         let sumY = 0;
+        const eyeHalfW = Math.max(0.01, ew * aspect * 0.5);
         for (const p of eyePixels) {
           if (p.fy < 0.26 || p.fy > 0.84) continue;
+          // Exclude inner/outer eye corners (caruncle/shadow) so dark corner pixels never pull pupils cross-eyed
+          const relCenter = Math.abs(
+            (p.nx - eyeCenter[0]) * aspect * axis.ux + (p.ny - eyeCenter[1]) * axis.uy,
+          );
+          if (relCenter > eyeHalfW * 0.56) continue;
           const d0 = Math.hypot((p.nx - pupil[0]) * aspect, p.ny - pupil[1]);
-          if (d0 > irisRad * 1.32 || p.luma >= darkCut) continue;
+          if (d0 > irisRad * 1.18 || p.luma >= darkCut) continue;
           const w = Math.pow(scleraLuma - p.luma, 2);
           sumW += w;
           sumX += p.nx * w;
@@ -466,7 +472,7 @@ function analyzePhotoFeatures(
           const cx = sumX / sumW;
           const cy = sumY / sumW;
           const shiftDist = Math.hypot((cx - pupil[0]) * aspect, cy - pupil[1]);
-          const maxShift = irisRad * 0.34;
+          const maxShift = irisRad * 0.16;
           if (shiftDist > 1e-6) {
             const clampScale = Math.min(1, maxShift / shiftDist);
             refinedPupil = [
@@ -476,22 +482,21 @@ function analyzePhotoFeatures(
           }
         }
 
-        // Measure full outer dark limbus boundary around refined cornea center
-        const limbusCut = scleraLuma * 0.83;
+        // Measure crisp inner-limbus cornea radius without grabbing surrounding lashes/sclera
+        const limbusCut = scleraLuma * 0.81;
         const radialDists: number[] = [];
         for (const p of eyePixels) {
           if (p.fy < 0.3 || p.fy > 0.82) continue;
           const d = Math.hypot((p.nx - refinedPupil[0]) * aspect, p.ny - refinedPupil[1]);
-          if (d <= irisRad * 1.48 && p.luma < limbusCut) {
+          if (d <= irisRad * 1.24 && p.luma < limbusCut) {
             radialDists.push(d);
           }
         }
         if (radialDists.length >= 12) {
           radialDists.sort((a, b) => a - b);
-          const p94 =
-            radialDists[Math.min(radialDists.length - 1, Math.floor(radialDists.length * 0.94))]!;
-          const eyeHalfW = Math.max(0.01, ew * aspect * 0.5);
-          refinedIrisRad = Math.min(eyeHalfW * 0.72, Math.max(irisRad * 1.16, p94 * 1.07));
+          const p85 =
+            radialDists[Math.min(radialDists.length - 1, Math.floor(radialDists.length * 0.85))]!;
+          refinedIrisRad = Math.min(eyeHalfW * 0.54, Math.max(irisRad * 0.98, p85));
         }
       }
 
@@ -499,33 +504,46 @@ function analyzePhotoFeatures(
       const negCands: ScleraCand[] = [];
       const posCands: ScleraCand[] = [];
       const allCands: ScleraCand[] = [];
+      const fallbackCands: ScleraCand[] = [];
+      const eyeHalfW = Math.max(0.01, ew * aspect * 0.5);
 
       for (const p of eyePixels) {
-        // Aspect-corrected full cornea + limbus exclusion so zero iris border pollutes sclera
+        // Aspect-corrected cornea + limbus exclusion across full clean exposed sclera band
         const dPupil = Math.hypot((p.nx - refinedPupil[0]) * aspect, p.ny - refinedPupil[1]);
-        if (dPupil < refinedIrisRad * 1.06) continue;
+        if (dPupil < refinedIrisRad * 1.18) continue;
+        if (p.fy < 0.36 || p.fy > 0.72) continue;
+
+        const relX = (p.nx - eyeCenter[0]) * aspect * axis.ux + (p.ny - eyeCenter[1]) * axis.uy;
+        if (Math.abs(relX) > eyeHalfW * 0.78) continue;
 
         const maxC = Math.max(p.r, p.g, p.b);
         const minC = Math.min(p.r, p.g, p.b);
         const sat = maxC > 0 ? (maxC - minC) / maxC : 0;
         const redness = p.r - (p.g + p.b) * 0.5;
-        // Reject only dark lash pixels or strong tear-duct caruncle red — keep true shaded sclera tones!
-        if (p.luma < 52 || sat > 0.42 || redness > 28) continue;
-        const score = p.luma - redness * 0.7 - sat * 30;
-        const item: ScleraCand = { score, rgb: [p.r, p.g, p.b] };
-        allCands.push(item);
+        if (p.luma >= 45) {
+          fallbackCands.push({
+            score: p.luma - sat * 18,
+            rgb: [p.r, p.g, p.b],
+          });
+        }
 
-        const relX = (p.nx - eyeCenter[0]) * aspect * axis.ux + (p.ny - eyeCenter[1]) * axis.uy;
-        if (relX < -refinedIrisRad * 0.15) negCands.push(item);
-        else if (relX > refinedIrisRad * 0.15) posCands.push(item);
+        // Rank brightest clean neutral sclera highest, rejecting upper-lid shadow, lash edge and caruncle red
+        if (p.luma < 92 || sat > 0.3 || redness > 24) continue;
+        const item: ScleraCand = {
+          score: p.luma - redness * 1.25 - sat * 48,
+          rgb: [p.r, p.g, p.b],
+        };
+        allCands.push(item);
+        if (relX < -refinedIrisRad * 0.14) negCands.push(item);
+        else if (relX > refinedIrisRad * 0.14) posCands.push(item);
       }
 
       const summarize = (list: ScleraCand[], fallbackColor: [number, number, number]) => {
         if (list.length === 0) return fallbackColor;
         const sorted = [...list].sort((a, b) => a.score - b.score);
-        // Inner median band (35%-72% percentile) preserves exact real photo luminance/warmth without whitewash
-        const sIdx = Math.min(sorted.length - 1, Math.floor(sorted.length * 0.35));
-        const eIdx = Math.min(sorted.length, Math.max(sIdx + 1, Math.floor(sorted.length * 0.72)));
+        // Clean upper-bright percentile (64%-92%) picks pure sclera without shadow bleed or highlight clipping
+        const sIdx = Math.min(sorted.length - 1, Math.floor(sorted.length * 0.64));
+        const eIdx = Math.min(sorted.length, Math.max(sIdx + 1, Math.floor(sorted.length * 0.92)));
         let sr = 0;
         let sg = 0;
         let sb = 0;
@@ -545,9 +563,31 @@ function analyzePhotoFeatures(
         ];
       };
 
-      const mid = summarize(allCands, [206, 200, 194]);
-      const neg = summarize(negCands, mid);
-      const pos = summarize(posCands, mid);
+      const sourcePool = allCands.length >= 4 ? allCands : fallbackCands;
+      const mid = summarize(sourcePool, [224, 220, 216]);
+      const midLuma = 0.299 * mid[0] + 0.587 * mid[1] + 0.114 * mid[2];
+      const rawNeg = negCands.length >= 3 ? summarize(negCands, mid) : mid;
+      const rawPos = posCands.length >= 3 ? summarize(posCands, mid) : mid;
+      // Preserve authentic directional light/shadow difference between inner & outer sclera while blocking noisy extremes
+      const anchorSide = (side: [number, number, number]): [number, number, number] => {
+        const sLuma = 0.299 * side[0] + 0.587 * side[1] + 0.114 * side[2];
+        const lift = sLuma > 1 ? Math.max(0.82, Math.min(1.08, (midLuma * 0.98) / sLuma)) : 1;
+        const clampedS =
+          Math.max(0.84 * midLuma, Math.min(1.08 * midLuma, sLuma)) / Math.max(1, sLuma);
+        const factor = sLuma < midLuma * 0.8 || sLuma > midLuma * 1.12 ? lift : clampedS;
+        const adj: [number, number, number] = [
+          Math.min(255, side[0] * factor),
+          Math.min(255, side[1] * factor),
+          Math.min(255, side[2] * factor),
+        ];
+        return [
+          Math.round(mid[0] * 0.25 + adj[0] * 0.75),
+          Math.round(mid[1] * 0.25 + adj[1] * 0.75),
+          Math.round(mid[2] * 0.25 + adj[2] * 0.75),
+        ];
+      };
+      const neg = anchorSide(rawNeg);
+      const pos = anchorSide(rawPos);
       return { mid, neg, pos, refinedPupil, refinedIrisRad };
     };
 
@@ -1631,7 +1671,7 @@ export async function detectFace(
 
     // Use MediaPipe hands if detected, otherwise Gemini Vision hands
     const finalHands = mpHands.length > 0 ? mpHands : visionKp?.hands;
-    // Discard segmentation mask if it's almost empty (<8% foreground) as happens on some anime drawings
+    // Discard segmentation mask if almost empty (<8%), otherwise snap soft border probabilities tightly to real image edges
     let usableSegMask = segMask;
     if (usableSegMask && segWidth && segHeight) {
       let sum = 0;
@@ -1641,6 +1681,59 @@ export async function detectFace(
       const frac = sum / usableSegMask.length;
       if (frac < 0.08 || frac > 0.96) {
         usableSegMask = undefined;
+      } else {
+        const detCtx = detCanvas.getContext("2d", { willReadFrequently: true });
+        if (detCtx) {
+          const detW = detCanvas.width;
+          const detH = detCanvas.height;
+          const detData = detCtx.getImageData(0, 0, detW, detH).data;
+          const snapped = new Float32Array(usableSegMask);
+          const sampleDetRgb = (sx: number, sy: number) => {
+            const px = Math.min(detW - 1, Math.max(0, Math.round((sx / segWidth!) * (detW - 1))));
+            const py = Math.min(detH - 1, Math.max(0, Math.round((sy / segHeight!) * (detH - 1))));
+            const o = (py * detW + px) * 4;
+            return [detData[o]!, detData[o + 1]!, detData[o + 2]!] as const;
+          };
+          for (let y = 2; y < segHeight - 2; y++) {
+            for (let x = 2; x < segWidth - 2; x++) {
+              const idx = y * segWidth + x;
+              const p = usableSegMask[idx]!;
+              if (p <= 0.08 || p >= 0.92) continue;
+              const [r, g, b] = sampleDetRgb(x, y);
+              let fgW = 0;
+              let fgSim = 0;
+              let bgW = 0;
+              let bgSim = 0;
+              for (const [dx, dy] of [
+                [-3, 0],
+                [3, 0],
+                [0, -3],
+                [0, 3],
+                [-2, -2],
+                [2, 2],
+              ] as const) {
+                const np = usableSegMask[(y + dy) * segWidth + (x + dx)]!;
+                const [nr, ng, nb] = sampleDetRgb(x + dx, y + dy);
+                const diff = Math.abs(r - nr) + Math.abs(g - ng) + Math.abs(b - nb);
+                const sim = Math.exp(-diff / 48);
+                if (np > 0.8) {
+                  fgW += 1;
+                  fgSim += sim;
+                } else if (np < 0.2) {
+                  bgW += 1;
+                  bgSim += sim;
+                }
+              }
+              if (fgW > 0 && bgW > 0) {
+                const fAvg = fgSim / fgW;
+                const bAvg = bgSim / bgW;
+                const guide = fAvg / Math.max(1e-4, fAvg + bAvg);
+                snapped[idx] = Math.max(0, Math.min(1, p * 0.45 + guide * 0.55));
+              }
+            }
+          }
+          usableSegMask = snapped;
+        }
       }
     }
 

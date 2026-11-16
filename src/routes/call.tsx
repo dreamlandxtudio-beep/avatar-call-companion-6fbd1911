@@ -27,6 +27,7 @@ import {
   useProfile,
 } from "@/lib/store";
 import {
+  deriveSpeechEmotionTimeline,
   extractEmotion,
   getModelOption,
   loadModel,
@@ -34,12 +35,14 @@ import {
   resetModel,
   useAIState,
   type AvatarEmotion,
+  type SpeechEmotionBeat,
 } from "@/lib/ai";
 import {
   acquireCallMedia,
   canListen,
   finishListening,
   listen,
+  playVocalLaugh,
   speak,
   startBargeInMonitor,
   stopListening,
@@ -126,7 +129,14 @@ function Call() {
   const userFaceRef = useRef<UserFaceObservation | undefined>(undefined);
   const recentUserLaughRef = useRef(0);
   const lastCameraLaughRef = useRef(0);
+  const cameraLaughStreakRef = useRef(0);
   const laughResetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const emotionTimersRef = useRef<Array<ReturnType<typeof setTimeout>>>([]);
+
+  const clearEmotionTimeline = () => {
+    for (const tid of emotionTimersRef.current) clearTimeout(tid);
+    emotionTimersRef.current = [];
+  };
 
   const isRinging = phase === "ringing";
   const mm = `${Math.floor(secs / 60)}:${(secs % 60).toString().padStart(2, "0")}`;
@@ -134,6 +144,9 @@ function Call() {
   const triggerUserLaughReaction = () => {
     recentUserLaughRef.current = Date.now();
     setAiEmotion("laugh");
+    if (!started) {
+      void playVocalLaugh(getProfile().gender, 3);
+    }
     if (laughResetTimerRef.current) clearTimeout(laughResetTimerRef.current);
     laughResetTimerRef.current = setTimeout(() => {
       if (alive.current) {
@@ -164,6 +177,7 @@ function Call() {
       callTokenRef.current += 1;
       loopActiveRef.current = false;
       if (laughResetTimerRef.current) clearTimeout(laughResetTimerRef.current);
+      clearEmotionTimeline();
       stopListening(true);
       stopSpeaking();
       stopCamera();
@@ -214,17 +228,36 @@ function Call() {
     };
   }, [camActive]);
 
-  // Camera laughter detection triggers natural contagious avatar laugh when not mid-reply
+  // Camera laughter detection requires sustained genuine smile+open mouth so speech never triggers false laughs
   useEffect(() => {
-    if (!camActive || !userFace?.detected) return;
-    if (userFace.emotion === "laugh" && phase !== "speaking") {
+    if (!camActive || !userFace?.detected) {
+      cameraLaughStreakRef.current = 0;
+      return;
+    }
+    if (
+      userFace.emotion === "laugh" &&
+      userFace.smile >= 0.6 &&
+      userFace.mouthOpen >= 0.26 &&
+      phase !== "speaking"
+    ) {
+      cameraLaughStreakRef.current += 1;
       const now = Date.now();
-      if (now - lastCameraLaughRef.current > 3200) {
+      if (cameraLaughStreakRef.current >= 2 && now - lastCameraLaughRef.current > 3600) {
         lastCameraLaughRef.current = now;
+        cameraLaughStreakRef.current = 0;
         triggerUserLaughReaction();
       }
+    } else {
+      cameraLaughStreakRef.current = 0;
     }
-  }, [camActive, userFace?.detected, userFace?.emotion, phase]);
+  }, [
+    camActive,
+    userFace?.detected,
+    userFace?.emotion,
+    userFace?.smile,
+    userFace?.mouthOpen,
+    phase,
+  ]);
 
   const requestCamera = async (): Promise<boolean> => {
     if (camRequestRef.current) return camRequestRef.current;
@@ -304,25 +337,47 @@ function Call() {
     text: string,
     token: number,
     emotion: AvatarEmotion,
+    timeline?: SpeechEmotionBeat[],
   ): Promise<boolean> => {
     let bargeTriggered = false;
+    clearEmotionTimeline();
+    if (timeline && timeline.length > 1) {
+      const estDurationMs = Math.max(1800, Math.min(18000, text.trim().split(/\s+/).length * 360));
+      for (const beat of timeline) {
+        if (beat.at <= 0.02) continue;
+        const tid = setTimeout(
+          () => {
+            if (isCallValid(token)) setAiEmotion(beat.emotion);
+          },
+          Math.round(beat.at * estDurationMs),
+        );
+        emotionTimersRef.current.push(tid);
+      }
+    }
     const stopBargeIn =
       !mutedRef.current && !textModeRef.current && canListen()
         ? startBargeInMonitor(() => {
             bargeTriggered = true;
+            clearEmotionTimeline();
             stopSpeaking();
           })
         : () => {};
     try {
       const cur = getProfile();
-      await speak(text, cur.voice, cur.language, emotion, {
-        localOnly: cur.localOnly,
-        gender: cur.gender,
-      });
+      if (emotion === "laugh" && !bargeTriggered && isCallValid(token)) {
+        await playVocalLaugh(cur.gender, 3);
+      }
+      if (!bargeTriggered && isCallValid(token)) {
+        await speak(text, cur.voice, cur.language, emotion, {
+          localOnly: cur.localOnly,
+          gender: cur.gender,
+        });
+      }
     } catch (error) {
       if (isCallValid(token))
         setMicNote(error instanceof Error ? error.message : "La voz no está disponible.");
     } finally {
+      clearEmotionTimeline();
       stopBargeIn();
     }
     return isCallValid(token) && bargeTriggered;
@@ -332,6 +387,7 @@ function Call() {
     addMessage({ role: "user", content: heard });
     let r = "";
     let em: AvatarEmotion = "neutral";
+    let explicitTimeline: SpeechEmotionBeat[] | undefined;
     try {
       const userLaughed =
         Date.now() - recentUserLaughRef.current < 5000 ||
@@ -359,6 +415,7 @@ function Call() {
       );
       r = res.text;
       em = res.emotion;
+      explicitTimeline = res.timeline;
     } catch (error) {
       if (!isCallValid(token)) return;
       setMicNote(error instanceof Error ? error.message : "No se pudo obtener una respuesta.");
@@ -370,9 +427,10 @@ function Call() {
     if (!isCallValid(token)) return;
     addMessage({ role: "assistant", content: r });
     setCaption(r);
-    setAiEmotion(em);
+    const beats = deriveSpeechEmotionTimeline(r, em, explicitTimeline);
+    setAiEmotion(beats[0]?.emotion ?? em);
     setPhase("speaking");
-    await speakWithBargeIn(r, token, em);
+    await speakWithBargeIn(r, token, em, beats);
   };
 
   const loop = async (token: number) => {
@@ -641,6 +699,7 @@ function Call() {
     callTokenRef.current += 1;
     loopActiveRef.current = false;
     if (laughResetTimerRef.current) clearTimeout(laughResetTimerRef.current);
+    clearEmotionTimeline();
     stopListening(true);
     stopSpeaking();
     stopCamera();

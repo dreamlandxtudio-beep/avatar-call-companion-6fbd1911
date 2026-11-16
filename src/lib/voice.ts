@@ -2,6 +2,7 @@
 // STT: MediaRecorder + Web Audio VAD -> /api/transcribe (Gemini 3.5 Transcribe), with browser SpeechRecognition fallback.
 import type { VoiceChoice } from "./store";
 import { voiceProsody } from "./voice-prosody";
+import { textToVisemeProtos } from "./phonemes";
 
 export const GEMINI_VOICES = [
   { id: "Kore", gender: "female" as const, label: "Kore · mujer, cálida y natural" },
@@ -123,6 +124,8 @@ export type AudioVisemes = {
   press?: number | undefined;
   pucker?: number | undefined;
   tongue?: number | undefined;
+  labiodental?: number | undefined;
+  stress?: number | undefined;
 };
 
 type VisemeCue = {
@@ -134,6 +137,8 @@ type VisemeCue = {
   press: number;
   pucker: number;
   tongue: number;
+  labiodental: number;
+  stress: number;
 };
 
 type VisemeTimeline = {
@@ -148,179 +153,79 @@ type VisemeTimeline = {
 
 let activeTimeline: VisemeTimeline | null = null;
 
-function buildVisemeTimeline(text: string, estimatedSec: number, rate = 1): VisemeTimeline {
-  const cues: VisemeCue[] = [];
-  const wordStartCues: Array<{ charIdx: number; sec: number }> = [];
-  const chars = Array.from(text);
-
-  type Proto = Omit<VisemeCue, "tStart" | "tEnd"> & { weight: number; charIdx: number };
-  const protos: Proto[] = [];
-  let inWord = false;
-
-  for (let i = 0; i < chars.length; i++) {
-    const rawCh = chars[i]!;
-    const ch = rawCh.toLowerCase();
-    const isLetter = /[a-záéíóúüñ]/i.test(ch);
-    if (isLetter && !inWord) {
-      wordStartCues.push({ charIdx: i, sec: 0 });
-      inWord = true;
-    } else if (!isLetter) {
-      inWord = false;
-    }
-
-    if (/[aáàä]/i.test(ch)) {
-      protos.push({
-        open: 0.86,
-        wide: 0.24,
-        round: 0.04,
-        press: 0,
-        pucker: 0,
-        tongue: 0.06,
-        weight: 1.35,
-        charIdx: i,
-      });
-    } else if (/[eéèë]/i.test(ch)) {
-      protos.push({
-        open: 0.5,
-        wide: 0.68,
-        round: 0.0,
-        press: 0,
-        pucker: 0,
-        tongue: 0.14,
-        weight: 1.15,
-        charIdx: i,
-      });
-    } else if (/[iíìïy]/i.test(ch)) {
-      protos.push({
-        open: 0.28,
-        wide: 0.86,
-        round: 0.0,
-        press: 0,
-        pucker: 0,
-        tongue: 0.22,
-        weight: 1.05,
-        charIdx: i,
-      });
-    } else if (/[oóòö]/i.test(ch)) {
-      protos.push({
-        open: 0.58,
-        wide: 0.0,
-        round: 0.8,
-        press: 0,
-        pucker: 0.56,
-        tongue: 0.04,
-        weight: 1.25,
-        charIdx: i,
-      });
-    } else if (/[uúùüw]/i.test(ch)) {
-      protos.push({
-        open: 0.26,
-        wide: 0.0,
-        round: 0.94,
-        press: 0,
-        pucker: 0.88,
-        tongue: 0.04,
-        weight: 1.15,
-        charIdx: i,
-      });
-    } else if (/[pbm]/i.test(ch)) {
-      protos.push({
-        open: 0.0,
-        wide: 0.0,
-        round: 0.0,
-        press: 0.95,
-        pucker: 0.12,
-        tongue: 0.0,
-        weight: 0.78,
-        charIdx: i,
-      });
-    } else if (/[fv]/i.test(ch)) {
-      protos.push({
-        open: 0.14,
-        wide: 0.16,
-        round: 0.0,
-        press: 0.42,
-        pucker: 0.0,
-        tongue: 0.05,
-        weight: 0.72,
-        charIdx: i,
-      });
-    } else if (/[szcx]/i.test(ch)) {
-      protos.push({
-        open: 0.18,
-        wide: 0.44,
-        round: 0.08,
-        press: 0.08,
-        pucker: 0.0,
-        tongue: 0.16,
-        weight: 0.75,
-        charIdx: i,
-      });
-    } else if (/[tdlnrñ]/i.test(ch)) {
-      protos.push({
-        open: 0.28,
-        wide: 0.22,
-        round: 0.06,
-        press: 0.0,
-        pucker: 0.0,
-        tongue: 0.46,
-        weight: 0.72,
-        charIdx: i,
-      });
-    } else if (/[kgjh]/i.test(ch)) {
-      protos.push({
-        open: 0.34,
-        wide: 0.14,
-        round: 0.12,
-        press: 0.0,
-        pucker: 0.0,
-        tongue: 0.18,
-        weight: 0.7,
-        charIdx: i,
-      });
-    } else if (/[,;:]/.test(ch)) {
-      protos.push({
-        open: 0.02,
-        wide: 0.0,
-        round: 0.0,
-        press: 0.2,
-        pucker: 0.0,
-        tongue: 0.0,
-        weight: 1.6,
-        charIdx: i,
-      });
-    } else if (/[.!?…]/.test(ch)) {
-      protos.push({
-        open: 0.0,
-        wide: 0.0,
-        round: 0.0,
-        press: 0.28,
-        pucker: 0.0,
-        tongue: 0.0,
-        weight: 2.5,
-        charIdx: i,
-      });
-    } else if (/\s/.test(ch)) {
-      protos.push({
-        open: 0.1,
-        wide: 0.06,
-        round: 0.04,
-        press: 0.04,
-        pucker: 0.0,
-        tongue: 0.0,
-        weight: 0.35,
-        charIdx: i,
-      });
-    }
+function detectAudioSpeechWindow(buf: AudioBuffer): { startSec: number; endSec: number } {
+  const dur = Math.max(0.4, buf.duration || 1);
+  if (buf.numberOfChannels === 0 || buf.length < 64) {
+    return { startSec: 0, endSec: dur };
   }
+  const ch = buf.getChannelData(0);
+  const sr = buf.sampleRate || 24000;
+  const step = Math.max(128, Math.round(sr * 0.015));
+  let peak = 0;
+  const energies: number[] = [];
+  for (let i = 0; i < ch.length; i += step) {
+    const end = Math.min(ch.length, i + step);
+    let s = 0;
+    for (let j = i; j < end; j++) {
+      const v = ch[j]!;
+      s += v * v;
+    }
+    const rms = Math.sqrt(s / Math.max(1, end - i));
+    if (rms > peak) peak = rms;
+    energies.push(rms);
+  }
+  const thresh = Math.max(0.012, peak * 0.085);
+  let firstIdx = 0;
+  let lastIdx = Math.max(0, energies.length - 1);
+  while (firstIdx < energies.length && energies[firstIdx]! < thresh) firstIdx++;
+  while (lastIdx > firstIdx && energies[lastIdx]! < thresh) lastIdx--;
+  if (firstIdx >= lastIdx) {
+    return { startSec: 0, endSec: dur };
+  }
+  const startSec = Math.max(0, (firstIdx * step) / sr - 0.03);
+  const endSec = Math.min(dur, Math.max(startSec + 0.3, ((lastIdx + 1) * step) / sr + 0.05));
+  return { startSec, endSec };
+}
+
+export function buildVisemeTimeline(
+  text: string,
+  estimatedSec: number,
+  rate = 1,
+  speechWindow?: { startSec: number; endSec: number },
+): VisemeTimeline {
+  const { protos, wordStartChars } = textToVisemeProtos(text);
+  const cues: VisemeCue[] = [];
+  const wordStartCues: Array<{ charIdx: number; sec: number }> = wordStartChars.map((charIdx) => ({
+    charIdx,
+    sec: 0,
+  }));
 
   let totalW = 0;
   for (const p of protos) totalW += p.weight;
-  const dur = Math.max(0.4, estimatedSec);
-  let curT = 0;
+  const totalDur = Math.max(0.4, estimatedSec);
+  const winStart = Math.max(0, speechWindow?.startSec ?? 0);
+  const winEnd = Math.min(totalDur, Math.max(winStart + 0.35, speechWindow?.endSec ?? totalDur));
+  const activeSpan = Math.max(0.35, winEnd - winStart);
+
+  if (winStart > 0.01) {
+    cues.push({
+      tStart: 0,
+      tEnd: winStart,
+      open: 0,
+      wide: 0,
+      round: 0,
+      press: 0.12,
+      pucker: 0,
+      tongue: 0,
+      labiodental: 0,
+      stress: 0,
+    });
+  }
+
+  let curT = winStart;
   let wPtr = 0;
   for (const p of protos) {
-    const dt = (p.weight / Math.max(1, totalW)) * dur;
+    const dt = (p.weight / Math.max(1, totalW)) * activeSpan;
     while (wPtr < wordStartCues.length && wordStartCues[wPtr]!.charIdx <= p.charIdx) {
       wordStartCues[wPtr]!.sec = curT;
       wPtr++;
@@ -334,13 +239,30 @@ function buildVisemeTimeline(text: string, estimatedSec: number, rate = 1): Vise
       press: p.press,
       pucker: p.pucker,
       tongue: p.tongue,
+      labiodental: p.labiodental,
+      stress: p.stress,
     });
     curT += dt;
   }
 
+  if (winEnd < totalDur - 0.01) {
+    cues.push({
+      tStart: winEnd,
+      tEnd: totalDur,
+      open: 0,
+      wide: 0,
+      round: 0,
+      press: 0.12,
+      pucker: 0,
+      tongue: 0,
+      labiodental: 0,
+      stress: 0,
+    });
+  }
+
   return {
     cues,
-    totalSec: dur,
+    totalSec: totalDur,
     wordStartCues,
     startedAtMs: typeof performance !== "undefined" ? performance.now() : 0,
     startedAudioTime: ctx ? ctx.currentTime : 0,
@@ -349,16 +271,19 @@ function buildVisemeTimeline(text: string, estimatedSec: number, rate = 1): Vise
   };
 }
 
-function sampleVisemeTimeline(
+export function sampleVisemeTimeline(
   tl: VisemeTimeline | null,
+  elapsedOverrideSec?: number,
 ): Omit<VisemeCue, "tStart" | "tEnd"> | null {
   if (!tl || tl.cues.length === 0) return null;
   const elapsed =
-    tl.useAudioClock && ctx
-      ? Math.max(0, ctx.currentTime - tl.startedAudioTime)
-      : typeof performance !== "undefined"
-        ? Math.max(0, (performance.now() - tl.startedAtMs) * 0.001)
-        : 0;
+    elapsedOverrideSec !== undefined
+      ? elapsedOverrideSec
+      : tl.useAudioClock && ctx
+        ? Math.max(0, ctx.currentTime - tl.startedAudioTime)
+        : typeof performance !== "undefined"
+          ? Math.max(0, (performance.now() - tl.startedAtMs) * 0.001)
+          : 0;
   if (elapsed >= tl.totalSec + 0.35) return null;
 
   const t = Math.min(tl.totalSec - 0.001, Math.max(0, elapsed));
@@ -375,9 +300,9 @@ function sampleVisemeTimeline(
   const prev = tl.cues[Math.max(0, lo - 1)]!;
   const span = Math.max(0.015, cur.tEnd - cur.tStart);
   const f = Math.max(0, Math.min(1, (t - cur.tStart) / span));
-  // Coarticulation blend between previous -> current center -> next cue
-  const neighbor = f < 0.35 ? prev : f > 0.65 ? next : cur;
-  const wN = f < 0.35 ? (0.35 - f) * 1.15 : f > 0.65 ? (f - 0.65) * 1.15 : 0;
+  // Crisp coarticulation preserving phoneme distinctness at center of cue
+  const neighbor = f < 0.28 ? prev : f > 0.72 ? next : cur;
+  const wN = f < 0.28 ? (0.28 - f) * 1.1 : f > 0.72 ? (f - 0.72) * 1.1 : 0;
   const wC = 1 - wN;
 
   return {
@@ -387,6 +312,8 @@ function sampleVisemeTimeline(
     press: cur.press * wC + neighbor.press * wN,
     pucker: cur.pucker * wC + neighbor.pucker * wN,
     tongue: cur.tongue * wC + neighbor.tongue * wN,
+    labiodental: cur.labiodental * wC + neighbor.labiodental * wN,
+    stress: cur.stress * wC + neighbor.stress * wN,
   };
 }
 
@@ -443,17 +370,34 @@ export function audioVisemes(): AudioVisemes {
     const acousticRound = Math.min(1, Math.max(0, (low * 1.22 - high * 0.62) * (0.4 + level)));
 
     if (cue) {
-      const voiceGate = Math.min(1, level * 2.2);
-      const press = Math.max(cue.press * (1 - voiceGate * 0.55), silenceDip * cue.press);
+      const voiceGate = Math.min(1, level * 2.4);
+      // Preserve bilabial seal (P/B/M) strongly when cue calls for it instead of blurring it with acoustic bleed
+      const press =
+        cue.press > 0.45
+          ? Math.max(cue.press * 0.92, silenceDip * cue.press)
+          : Math.max(cue.press * 0.7, silenceDip * 0.25);
+      const labiodental = cue.labiodental * (0.55 + 0.45 * voiceGate);
       const open = Math.max(
         0,
-        (acousticOpen * 0.68 + cue.open * voiceGate * 0.42) * (1 - press * 0.72),
+        (cue.open * (0.45 + 0.55 * voiceGate) + acousticOpen * 0.42) *
+          (1 - press * 0.88) *
+          (1 - labiodental * 0.55),
       );
-      const wide = Math.min(1, acousticWide * 0.62 + cue.wide * voiceGate * 0.48);
-      const round = Math.min(1, acousticRound * 0.58 + cue.round * voiceGate * 0.52);
-      const pucker = Math.min(1, round * 0.65 + cue.pucker * voiceGate * 0.45);
-      const tongue = Math.min(1, cue.tongue * voiceGate);
-      return { level, open, wide, round, press, pucker, tongue };
+      const wide = Math.min(1, cue.wide * (0.52 + 0.48 * voiceGate) + acousticWide * 0.35);
+      const round = Math.min(1, cue.round * (0.56 + 0.44 * voiceGate) + acousticRound * 0.34);
+      const pucker = Math.min(1, round * 0.48 + cue.pucker * (0.5 + 0.5 * voiceGate));
+      const tongue = Math.min(1, cue.tongue * (0.42 + 0.58 * voiceGate));
+      return {
+        level,
+        open,
+        wide,
+        round,
+        press,
+        pucker,
+        tongue,
+        labiodental,
+        stress: cue.stress * voiceGate,
+      };
     }
 
     return {
@@ -464,6 +408,8 @@ export function audioVisemes(): AudioVisemes {
       press: silenceDip * 0.35,
       pucker: acousticRound * 0.65,
       tongue: sib > 0.22 ? 0.22 : 0,
+      labiodental: 0,
+      stress: Math.min(1, level * 0.7),
     };
   }
 
@@ -471,12 +417,14 @@ export function audioVisemes(): AudioVisemes {
     const dyn = 0.75 + Math.min(0.4, fakeLevel * 0.45);
     return {
       level: Math.max(fakeLevel, cue.open * 0.85),
-      open: Math.min(1, cue.open * dyn * (1 - cue.press * 0.8)),
+      open: Math.min(1, cue.open * dyn * (1 - cue.press * 0.88) * (1 - cue.labiodental * 0.55)),
       wide: Math.min(1, cue.wide * dyn),
       round: Math.min(1, cue.round * dyn),
       press: cue.press,
       pucker: cue.pucker,
       tongue: cue.tongue,
+      labiodental: cue.labiodental,
+      stress: cue.stress,
     };
   }
 
@@ -489,6 +437,8 @@ export function audioVisemes(): AudioVisemes {
     press: 0,
     pucker: 0,
     tongue: 0,
+    labiodental: 0,
+    stress: 0,
   };
 }
 
@@ -560,7 +510,8 @@ async function playAudioBuffer(
   src.connect(analyser!);
   current = src;
   if (spokenText) {
-    const tl = buildVisemeTimeline(spokenText, buf.duration || 3, 1);
+    const speechWindow = detectAudioSpeechWindow(buf);
+    const tl = buildVisemeTimeline(spokenText, buf.duration || 3, 1, speechWindow);
     tl.useAudioClock = true;
     tl.startedAudioTime = c.currentTime;
     activeTimeline = tl;
@@ -689,6 +640,123 @@ async function speakViaGemini(
 
 export function defaultGeminiVoiceForGender(gender?: "female" | "male"): string {
   return gender === "male" ? "Charon" : "Kore";
+}
+
+/**
+ * Synthesizes realistic aspirated vocal laughter pulses ("ha-ha-ha-ha") routed through the active
+ * AnalyserNode + viseme timeline so audible laughter drives authentic lip/jaw bounce.
+ */
+export async function playVocalLaugh(gender?: "female" | "male", bursts = 4): Promise<void> {
+  if (typeof window === "undefined") return;
+  const c = unlockAudio();
+  if (!c) return;
+  if (c.state === "suspended") {
+    await Promise.race([c.resume().catch(() => {}), new Promise<void>((r) => setTimeout(r, 250))]);
+  }
+  if (c.state !== "running") return;
+
+  stopSpeaking();
+  const ctrl = new AbortController();
+  speakAbort = ctrl;
+
+  const count = Math.max(3, Math.min(6, Math.round(bursts)));
+  const sr = c.sampleRate || 24000;
+  const beatDur = 0.21;
+  const totalDur = count * beatDur + 0.26;
+  const len = Math.max(1024, Math.floor(totalDur * sr));
+
+  let audioBuf: AudioBuffer | null = null;
+  if (typeof OfflineAudioContext !== "undefined") {
+    const off = new OfflineAudioContext(1, len, sr);
+    const baseF0 = gender === "male" ? 128 : 218;
+    const masterGain = off.createGain();
+    masterGain.gain.value = 0.56;
+    masterGain.connect(off.destination);
+
+    // Parallel formant filters modeling open warm /a/ -> /eh/ vocal tract resonance
+    const f1 = off.createBiquadFilter();
+    f1.type = "bandpass";
+    f1.frequency.value = gender === "male" ? 680 : 760;
+    f1.Q.value = 4.6;
+
+    const f2 = off.createBiquadFilter();
+    f2.type = "bandpass";
+    f2.frequency.value = gender === "male" ? 1180 : 1340;
+    f2.Q.value = 6.2;
+
+    const f1Gain = off.createGain();
+    f1Gain.gain.value = 0.85;
+    const f2Gain = off.createGain();
+    f2Gain.gain.value = 0.42;
+    f1.connect(f1Gain);
+    f2.connect(f2Gain);
+    f1Gain.connect(masterGain);
+    f2Gain.connect(masterGain);
+
+    // Soft breath aspiration noise buffer
+    const noiseLen = Math.floor(0.28 * sr);
+    const noiseBuf = off.createBuffer(1, noiseLen, sr);
+    const nData = noiseBuf.getChannelData(0);
+    let lp = 0;
+    for (let i = 0; i < noiseLen; i++) {
+      lp = lp * 0.72 + (Math.random() * 2 - 1) * 0.28;
+      nData[i] = lp;
+    }
+
+    for (let b = 0; b < count; b++) {
+      const start = 0.03 + b * beatDur;
+      const pulseDur = 0.145;
+      const decay = 1 - b * 0.12;
+      const freq = baseF0 * (1 - b * 0.055);
+
+      const osc = off.createOscillator();
+      const sub = off.createOscillator();
+      osc.type = "sawtooth";
+      sub.type = "triangle";
+      osc.frequency.setValueAtTime(freq * 1.07, start);
+      osc.frequency.exponentialRampToValueAtTime(Math.max(70, freq * 0.86), start + pulseDur);
+      sub.frequency.setValueAtTime(freq * 1.07, start);
+      sub.frequency.exponentialRampToValueAtTime(Math.max(70, freq * 0.86), start + pulseDur);
+
+      const env = off.createGain();
+      env.gain.setValueAtTime(0.0001, start + 0.014);
+      env.gain.linearRampToValueAtTime(0.26 * decay, start + 0.042);
+      env.gain.exponentialRampToValueAtTime(0.001, start + pulseDur);
+
+      osc.connect(env);
+      sub.connect(env);
+      env.connect(f1);
+      env.connect(f2);
+
+      // Breath "h" onset burst right before voiced vowel of each "ha!"
+      const noise = off.createBufferSource();
+      noise.buffer = noiseBuf;
+      const nFilter = off.createBiquadFilter();
+      nFilter.type = "bandpass";
+      nFilter.frequency.value = 1450;
+      nFilter.Q.value = 1.6;
+      const nEnv = off.createGain();
+      nEnv.gain.setValueAtTime(0.0001, start);
+      nEnv.gain.linearRampToValueAtTime(0.22 * decay, start + 0.018);
+      nEnv.gain.exponentialRampToValueAtTime(0.001, start + 0.068);
+      noise.connect(nFilter);
+      nFilter.connect(nEnv);
+      nEnv.connect(masterGain);
+
+      osc.start(start + 0.01);
+      sub.start(start + 0.01);
+      osc.stop(start + pulseDur + 0.02);
+      sub.stop(start + pulseDur + 0.02);
+      noise.start(start);
+      noise.stop(start + 0.08);
+    }
+
+    audioBuf = await off.startRendering();
+  }
+
+  if (!audioBuf || ctrl.signal.aborted) return;
+  const laughText = Array.from({ length: count }, () => "ja").join(" ");
+  await playAudioBuffer(audioBuf, c, ctrl.signal, laughText);
 }
 
 export async function speak(
@@ -1273,6 +1341,7 @@ export async function listen(
 
     let laughBursts = 0;
     let inLaughPulse = false;
+    let lastLaughPulseAt = 0;
     let laughEmitted = false;
     let prevVadEnergy = 0;
 
@@ -1303,18 +1372,20 @@ export async function listen(
       recentEnergies.push(speechEnergy);
       if (recentEnergies.length > 14) recentEnergies.shift();
 
-      // Detect rapid rhythmic vocal bursts characteristic of human chuckles/laughter (ha-ha-ha)
-      const pulseHi = Math.max(noiseFloor * 3.1, 0.032);
-      const pulseLo = pulseHi * 0.58;
-      if (!inLaughPulse && speechEnergy > pulseHi && speechEnergy > prevVadEnergy * 1.18) {
+      // Detect distinct rhythmic vocal bursts characteristic of human chuckles/laughter (ha-ha-ha-ha)
+      const pulseHi = Math.max(noiseFloor * 3.8, 0.044);
+      const pulseLo = pulseHi * 0.52;
+      const nowMs = Date.now();
+      if (
+        !inLaughPulse &&
+        speechEnergy > pulseHi &&
+        speechEnergy > prevVadEnergy * 1.24 &&
+        nowMs - lastLaughPulseAt >= 120
+      ) {
         inLaughPulse = true;
+        lastLaughPulseAt = nowMs;
         laughBursts++;
-        if (
-          !laughEmitted &&
-          laughBursts >= 3 &&
-          speechDetected &&
-          Date.now() - speechStartedAt < 2600
-        ) {
+        if (!laughEmitted && laughBursts >= 4 && speechDetected && nowMs - speechStartedAt < 2200) {
           laughEmitted = true;
           opts.onLaugh?.();
         }

@@ -1,9 +1,20 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { Aperture, ArrowLeft, Camera, CameraOff, SlidersHorizontal, ScanFace } from "lucide-react";
+import {
+  Aperture,
+  ArrowLeft,
+  Camera,
+  CameraOff,
+  ScanFace,
+  SlidersHorizontal,
+  Volume2,
+  VolumeX,
+} from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { AnimatedAvatar } from "@/components/AnimatedAvatar";
 import { Button } from "@/components/ui/button";
+import { AVATAR_EXPRESSIONS, type AvatarEmotion } from "@/lib/ai";
 import { setProfile, useProfile } from "@/lib/store";
+import { playVocalLaugh, speak, stopSpeaking, unlockAudio } from "@/lib/voice";
 import {
   analyzeUserVideoFrame,
   ensureUserFaceTracker,
@@ -29,6 +40,21 @@ export const Route = createFileRoute("/mirror")({
   component: Mirror,
 });
 
+const SAMPLE_SPEECH_ES: Partial<Record<AvatarEmotion, string>> = {
+  neutral: "Hola, aquí estoy contigo probando cada movimiento facial con calma.",
+  happy: "¡Qué alegría verte hoy! Me encanta cómo se siente conversar así contigo.",
+  euphoric: "¡Esto es increíble, no sabes lo emocionado que me siento ahora mismo!",
+  laugh: "¡Jajaja, qué ocurrencia! De verdad me hiciste reír muchísimo con eso.",
+  sad: "Lo siento mucho… me pesa verte pasar por un momento tan difícil.",
+  crying: "Perdóname… se me llenan los ojos de lágrimas al escuchar todo esto.",
+  heartbroken: "Me rompe el corazón saber lo que pasó, estoy aquí contigo en este duelo.",
+  angry: "¡Ya basta! No me parece justo cómo están tratando esta situación.",
+  furious: "¡Es completamente inaceptable, me hierve la sangre pensar en eso!",
+  surprised: "¡¿En serio?! No puedo creer lo que me estás contando ahora mismo.",
+  nervous: "Ay… estoy un poco nervioso, siento que me sudan hasta las sienes.",
+  sleepy: "Qué sueño tengo… apenas puedo mantener los párpados abiertos.",
+};
+
 function Mirror() {
   const p = useProfile();
   const video = useRef<HTMLVideoElement>(null);
@@ -40,10 +66,9 @@ function Mirror() {
   const [face, setFace] = useState<UserFaceObservation>();
   const [mode, setMode] = useState<"mirror" | "subtle">("mirror");
   const [showMesh, setShowMesh] = useState(false);
+  const [speakingTest, setSpeakingTest] = useState(false);
   const [style, setStyle] = useState<"auto" | "human" | "anime">(p.animationStyle ?? "auto");
-  const [pose, setPose] = useState<"neutral" | "happy" | "laugh" | "angry" | "sad" | "surprised">(
-    "neutral",
-  );
+  const [pose, setPose] = useState<AvatarEmotion>("neutral");
   const [strength, setStrength] = useState(0.8);
   const stop = () => {
     generation.current++;
@@ -60,6 +85,7 @@ function Mirror() {
     () => () => {
       generation.current++;
       stopUserCamera(stream.current);
+      stopSpeaking();
     },
     [],
   );
@@ -112,6 +138,30 @@ function Mirror() {
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
   }, [running]);
+  const toggleSpeechTest = async () => {
+    if (speakingTest) {
+      stopSpeaking();
+      setSpeakingTest(false);
+      return;
+    }
+    setSpeakingTest(true);
+    try {
+      const sample =
+        SAMPLE_SPEECH_ES[pose] ??
+        `Probando la expresión ${AVATAR_EXPRESSIONS.find((e) => e.id === pose)?.label ?? pose} al hablar con naturalidad.`;
+      if (pose === "laugh") {
+        await playVocalLaugh(p.gender, 4);
+      }
+      await speak(sample, p.voice, p.language, pose, {
+        localOnly: p.localOnly,
+        gender: p.gender,
+      });
+    } catch {
+      /* voice fallback ignored */
+    } finally {
+      setSpeakingTest(false);
+    }
+  };
   const adjusted = face
     ? {
         ...face,
@@ -122,6 +172,8 @@ function Mirror() {
         headRoll: (face.headRoll ?? 0) * strength,
       }
     : undefined;
+  const activeEntry = AVATAR_EXPRESSIONS.find((e) => e.id === pose) ?? AVATAR_EXPRESSIONS[0]!;
+  const categories = Array.from(new Set(AVATAR_EXPRESSIONS.map((e) => e.category)));
   return (
     <main className="mx-auto max-w-6xl px-4 py-5 pb-16 sm:px-8">
       <header className="mb-5 flex items-center gap-3 border-b border-border pb-4">
@@ -178,7 +230,7 @@ function Mirror() {
             <AnimatedAvatar
               src={p.avatar}
               name={p.name}
-              active={false}
+              active={speakingTest}
               emotion={pose}
               showMesh={showMesh}
               blurredBackground={p.blurredBackground}
@@ -191,7 +243,7 @@ function Mirror() {
           </div>
           <h2 className="mt-3 text-sm font-bold">{p.name}</h2>
           <p className="text-xs text-muted-foreground">
-            {mode === "mirror" ? "Espejo directo" : "Gestos sutiles"}
+            {mode === "mirror" ? "Espejo directo" : "Gestos sutiles"} · {activeEntry.label}
           </p>
         </section>
       </div>
@@ -202,6 +254,15 @@ function Mirror() {
         >
           {running || loading ? <CameraOff /> : <Camera />}
           {running || loading ? "Apagar cámara" : "Activar cámara"}
+        </Button>
+        <Button
+          variant={speakingTest ? "default" : "outline"}
+          aria-pressed={speakingTest}
+          onClick={() => void toggleSpeechTest()}
+          className="h-11 whitespace-nowrap shrink-0 rounded-xl"
+        >
+          {speakingTest ? <VolumeX /> : <Volume2 />}
+          {speakingTest ? "Detener voz" : "Probar habla"}
         </Button>
         <div
           className="flex gap-1 rounded-lg border border-border bg-card p-1"
@@ -261,22 +322,6 @@ function Mirror() {
             <option value="anime">Anime / dibujo</option>
           </select>
         </label>
-        <label className="flex items-center gap-2 text-sm">
-          Expresión
-          <select
-            aria-label="Probar expresión"
-            className="rounded-lg border border-input bg-card px-2.5 py-1.5 text-sm outline-none"
-            value={pose}
-            onChange={(e) => setPose(e.target.value as typeof pose)}
-          >
-            <option value="neutral">En reposo</option>
-            <option value="happy">Sonrisa</option>
-            <option value="laugh">Risa</option>
-            <option value="angry">Ceño fruncido</option>
-            <option value="sad">Comisuras bajas</option>
-            <option value="surprised">Sorpresa</option>
-          </select>
-        </label>
         <label className="flex items-center gap-3 text-sm">
           Intensidad
           <input
@@ -291,6 +336,61 @@ function Mirror() {
           />
         </label>
       </div>
+      <section className="mt-6 border-t border-border pt-5" aria-label="Laboratorio de expresiones">
+        <div className="mb-4 flex flex-wrap items-baseline justify-between gap-2">
+          <div>
+            <h2 className="text-base font-black text-foreground">
+              Estudio de expresiones y estados
+            </h2>
+            <p className="text-xs text-muted-foreground">
+              Activa cualquier gesto facial o estado físico para probar párpados, cejas, dientes,
+              lágrimas y sudor.
+            </p>
+          </div>
+          <span className="text-xs font-bold text-primary">
+            Activo: {activeEntry.label} — {activeEntry.detail}
+          </span>
+        </div>
+        <div className="space-y-4">
+          {categories.map((cat) => (
+            <div key={cat}>
+              <h3 className="mb-2 text-xs font-extrabold uppercase tracking-wider text-muted-foreground">
+                {cat}
+              </h3>
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
+                {AVATAR_EXPRESSIONS.filter((e) => e.category === cat).map((entry) => {
+                  const selected = pose === entry.id;
+                  return (
+                    <button
+                      key={entry.id}
+                      type="button"
+                      aria-pressed={selected}
+                      onClick={() => {
+                        setPose(entry.id);
+                        if (entry.id === "laugh") {
+                          unlockAudio();
+                          stopSpeaking();
+                          void playVocalLaugh(p.gender, 4);
+                        }
+                      }}
+                      className={`flex flex-col items-start rounded-xl border px-3 py-2.5 text-left transition-colors ${
+                        selected
+                          ? "border-primary bg-primary/12 text-foreground shadow-sm"
+                          : "border-border/70 bg-card/70 text-foreground/90 hover:border-border hover:bg-secondary/60"
+                      }`}
+                    >
+                      <span className="text-xs font-extrabold leading-snug">{entry.label}</span>
+                      <span className="mt-0.5 text-[11px] font-medium leading-tight text-muted-foreground">
+                        {entry.detail}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
       {error && (
         <p role="alert" className="mt-4 text-sm text-destructive">
           {error}

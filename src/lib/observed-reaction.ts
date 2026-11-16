@@ -26,7 +26,11 @@ export function stepObservedReaction(s: ObservedReaction, now: number, face?: Us
   if (face.updatedAt !== s.lastSample) {
     if (face.updatedAt - s.lastSample > OBSERVATION_MAX_AGE_MS) s.since = null;
     s.lastSample = face.updatedAt;
-    const smiling = face.smile >= 0.5 && ((face.eyeSquint ?? 0) >= 0.12 || face.mouthOpen >= 0.15);
+    const smiling =
+      face.smile >= 0.66 &&
+      face.browFurrow < 0.2 &&
+      (face.eyeSquint ?? 0) >= 0.22 &&
+      face.mouthOpen >= 0.22;
     if (!smiling) s.since = null;
     else if (s.since === null) s.since = face.updatedAt;
     if (
@@ -118,12 +122,12 @@ export function stepObservedEmpathy(
     if (gap > OBSERVATION_MAX_AGE_MS) {
       st.sustainedMs = 0;
     } else {
-      const smileSig = Math.max(0, face.smile - 0.28);
-      const furrowSig = Math.max(0, face.browFurrow - 0.25);
+      const smileSig = Math.max(0, face.smile - 0.34);
+      const furrowSig = Math.max(0, face.browFurrow - 0.18);
       const raiseSig = Math.max(0, face.browRaise - 0.28);
       const frownSig = Math.max(0, (face.mouthFrown ?? 0) - 0.24);
       const wideSig = Math.max(0, (face.eyeWide ?? 0) - 0.26);
-      const noseSig = Math.max(0, (face.noseSneer ?? 0) - 0.24);
+      const noseSig = Math.max(0, (face.noseSneer ?? 0) - 0.2);
       const poseMag = Math.max(
         Math.abs(face.headYaw) - 0.14,
         Math.abs(face.headPitch) - 0.14,
@@ -143,14 +147,14 @@ export function stepObservedEmpathy(
         st.cooldownUntil = now + 2600;
         st.target = {
           smile: Math.min(0.32, Math.max(0, face.smile * 0.34)),
-          browFurrow: Math.min(0.36, Math.max(0, face.browFurrow * 0.42)),
+          browFurrow: Math.min(0.46, Math.max(0, face.browFurrow * 0.52)),
           browRaise: Math.min(0.34, Math.max(0, face.browRaise * 0.36)),
           frown: Math.min(0.3, Math.max(0, (face.mouthFrown ?? 0) * 0.38)),
           eyeWide: Math.min(0.28, Math.max(0, (face.eyeWide ?? 0) * 0.34)),
-          noseScrunch: Math.min(0.32, Math.max(0, (face.noseSneer ?? 0) * 0.4)),
-          headYaw: Math.max(-0.24, Math.min(0.24, face.headYaw * 0.28)),
-          headPitch: Math.max(-0.22, Math.min(0.22, face.headPitch * 0.28)),
-          headRoll: Math.max(-0.08, Math.min(0.08, (face.headRoll ?? 0) * 0.32)),
+          noseScrunch: Math.min(0.42, Math.max(0, (face.noseSneer ?? 0) * 0.52)),
+          headYaw: Math.max(-0.28, Math.min(0.28, face.headYaw * 0.34)),
+          headPitch: Math.max(-0.24, Math.min(0.24, face.headPitch * 0.32)),
+          headRoll: Math.max(-0.06, Math.min(0.06, (face.headRoll ?? 0) * 0.22)),
         };
       }
     }
