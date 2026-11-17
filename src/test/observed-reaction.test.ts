@@ -32,8 +32,8 @@ describe("Delayed observed responses", () => {
     const state = createObservedReaction();
     for (let at = 0; at <= 900; at += 100)
       expect(stepObservedReaction(state, at, observation(at))).toBe(0);
-    expect(stepObservedReaction(state, 1100, observation(1100))).toBe(0);
-    expect(stepObservedReaction(state, 1200, observation(1200))).toBeGreaterThan(0);
+    expect(stepObservedReaction(state, 1200, observation(1200))).toBe(0);
+    expect(stepObservedReaction(state, 1300, observation(1300))).toBeGreaterThan(0);
   });
   it("never reacts to a single old frame or a lost camera", () => {
     const state = createObservedReaction();
@@ -46,11 +46,11 @@ describe("Delayed observed responses", () => {
     for (let at = 0; at <= 2000; at += 100)
       expect(stepObservedReaction(state, at, observation(at, 0))).toBe(0);
   });
-  it("does not retrigger continuously during an eight-second cooldown", () => {
+  it("does not retrigger continuously during a 9.5-second cooldown", () => {
     const state = createObservedReaction();
     for (let at = 0; at <= 4000; at += 100) stepObservedReaction(state, at, observation(at));
     expect(stepObservedReaction(state, 4100, observation(4100))).toBe(0);
-    expect(state.cooldownUntil).toBe(8900);
+    expect(state.cooldownUntil).toBe(10400);
   });
 });
 

@@ -2,7 +2,7 @@
 export function mouthMotion(open: number, hasTeeth: boolean, restRatio: number) {
   const speech = Math.max(0, Math.min(1, open));
   return {
-    opening: speech * (hasTeeth ? 0.84 : 0.9),
+    opening: speech * (hasTeeth ? 0.86 : 0.9),
     closure: Math.max(0, Math.min(0.35, restRatio)) * (1 - Math.min(1, speech * 4)),
     useOriginalTeeth: hasTeeth,
     syntheticTeeth: true,

@@ -759,6 +759,273 @@ export async function playVocalLaugh(gender?: "female" | "male", bursts = 4): Pr
   await playAudioBuffer(audioBuf, c, ctrl.signal, laughText);
 }
 
+export function isSpeaking(): boolean {
+  return !!(current || fakeTimer || speakAbort);
+}
+
+/**
+ * Synthesizes tremulous soft crying sobs and shaky inhales routed through the active AnalyserNode.
+ */
+export async function playVocalCry(gender?: "female" | "male", sobs = 2): Promise<void> {
+  if (typeof window === "undefined") return;
+  const c = unlockAudio();
+  if (!c) return;
+  if (c.state === "suspended") {
+    await Promise.race([c.resume().catch(() => {}), new Promise<void>((r) => setTimeout(r, 250))]);
+  }
+  if (c.state !== "running") return;
+
+  stopSpeaking();
+  const ctrl = new AbortController();
+  speakAbort = ctrl;
+
+  const count = Math.max(2, Math.min(4, Math.round(sobs)));
+  const sr = c.sampleRate || 24000;
+  const beatDur = 0.34;
+  const totalDur = count * beatDur + 0.32;
+  const len = Math.max(1024, Math.floor(totalDur * sr));
+
+  let audioBuf: AudioBuffer | null = null;
+  if (typeof OfflineAudioContext !== "undefined") {
+    const off = new OfflineAudioContext(1, len, sr);
+    const baseF0 = gender === "male" ? 132 : 242;
+    const masterGain = off.createGain();
+    masterGain.gain.value = 0.44;
+    masterGain.connect(off.destination);
+
+    const f1 = off.createBiquadFilter();
+    f1.type = "bandpass";
+    f1.frequency.value = gender === "male" ? 410 : 480;
+    f1.Q.value = 4.2;
+
+    const f2 = off.createBiquadFilter();
+    f2.type = "bandpass";
+    f2.frequency.value = gender === "male" ? 960 : 1120;
+    f2.Q.value = 5.0;
+
+    f1.connect(masterGain);
+    f2.connect(masterGain);
+
+    const nLen = Math.floor(0.32 * sr);
+    const noiseBuf = off.createBuffer(1, nLen, sr);
+    const nData = noiseBuf.getChannelData(0);
+    let lp = 0;
+    for (let i = 0; i < nLen; i++) {
+      lp = lp * 0.78 + (Math.random() * 2 - 1) * 0.22;
+      nData[i] = lp;
+    }
+
+    for (let b = 0; b < count; b++) {
+      const start = 0.04 + b * beatDur;
+      const osc = off.createOscillator();
+      osc.type = "triangle";
+      const freq = baseF0 * (1 - b * 0.04);
+      osc.frequency.setValueAtTime(freq * 1.06, start);
+      osc.frequency.linearRampToValueAtTime(freq * 0.84, start + 0.22);
+
+      const vib = off.createOscillator();
+      vib.frequency.value = 6.2;
+      const vibGain = off.createGain();
+      vibGain.gain.value = freq * 0.055;
+      vib.connect(vibGain);
+      vibGain.connect(osc.frequency);
+
+      const env = off.createGain();
+      env.gain.setValueAtTime(0.0001, start);
+      env.gain.linearRampToValueAtTime(0.22, start + 0.06);
+      env.gain.exponentialRampToValueAtTime(0.001, start + 0.23);
+
+      osc.connect(env);
+      env.connect(f1);
+      env.connect(f2);
+      osc.start(start);
+      vib.start(start);
+      osc.stop(start + 0.25);
+      vib.stop(start + 0.25);
+
+      // Shaky breathy inhale sniff right after sob pulse
+      const breathStart = start + 0.18;
+      const noise = off.createBufferSource();
+      noise.buffer = noiseBuf;
+      const bf = off.createBiquadFilter();
+      bf.type = "bandpass";
+      bf.frequency.value = 1850;
+      bf.Q.value = 2.4;
+      const nEnv = off.createGain();
+      nEnv.gain.setValueAtTime(0.0001, breathStart);
+      nEnv.gain.linearRampToValueAtTime(0.14, breathStart + 0.04);
+      nEnv.gain.exponentialRampToValueAtTime(0.001, breathStart + 0.14);
+      noise.connect(bf);
+      bf.connect(nEnv);
+      nEnv.connect(masterGain);
+      noise.start(breathStart);
+      noise.stop(breathStart + 0.16);
+    }
+
+    audioBuf = await off.startRendering();
+  }
+
+  if (!audioBuf || ctrl.signal.aborted) return;
+  const sobText = Array.from({ length: count }, () => "uh").join(" ");
+  await playAudioBuffer(audioBuf, c, ctrl.signal, sobText);
+}
+
+/**
+ * Synthesizes a soft realistic breathy exhale sigh ("ahhh").
+ */
+export async function playVocalSigh(gender?: "female" | "male"): Promise<void> {
+  if (typeof window === "undefined") return;
+  const c = unlockAudio();
+  if (!c) return;
+  if (c.state === "suspended") {
+    await Promise.race([c.resume().catch(() => {}), new Promise<void>((r) => setTimeout(r, 250))]);
+  }
+  if (c.state !== "running") return;
+
+  stopSpeaking();
+  const ctrl = new AbortController();
+  speakAbort = ctrl;
+
+  const sr = c.sampleRate || 24000;
+  const totalDur = 0.78;
+  const len = Math.max(1024, Math.floor(totalDur * sr));
+
+  let audioBuf: AudioBuffer | null = null;
+  if (typeof OfflineAudioContext !== "undefined") {
+    const off = new OfflineAudioContext(1, len, sr);
+    const masterGain = off.createGain();
+    masterGain.gain.value = 0.4;
+    masterGain.connect(off.destination);
+
+    const noiseBuf = off.createBuffer(1, len, sr);
+    const nData = noiseBuf.getChannelData(0);
+    let lp = 0;
+    for (let i = 0; i < len; i++) {
+      lp = lp * 0.76 + (Math.random() * 2 - 1) * 0.24;
+      nData[i] = lp;
+    }
+
+    const noise = off.createBufferSource();
+    noise.buffer = noiseBuf;
+    const tract = off.createBiquadFilter();
+    tract.type = "bandpass";
+    tract.frequency.setValueAtTime(gender === "male" ? 720 : 940, 0);
+    tract.frequency.exponentialRampToValueAtTime(gender === "male" ? 460 : 580, totalDur - 0.06);
+    tract.Q.value = 2.0;
+
+    const nEnv = off.createGain();
+    nEnv.gain.setValueAtTime(0.0001, 0.02);
+    nEnv.gain.linearRampToValueAtTime(0.32, 0.14);
+    nEnv.gain.exponentialRampToValueAtTime(0.001, totalDur - 0.04);
+
+    noise.connect(tract);
+    tract.connect(nEnv);
+    nEnv.connect(masterGain);
+
+    const hum = off.createOscillator();
+    hum.type = "triangle";
+    const baseF0 = gender === "male" ? 115 : 198;
+    hum.frequency.setValueAtTime(baseF0, 0.03);
+    hum.frequency.exponentialRampToValueAtTime(baseF0 * 0.72, 0.56);
+    const hFilter = off.createBiquadFilter();
+    hFilter.type = "lowpass";
+    hFilter.frequency.value = 480;
+    const hEnv = off.createGain();
+    hEnv.gain.setValueAtTime(0.0001, 0.03);
+    hEnv.gain.linearRampToValueAtTime(0.09, 0.12);
+    hEnv.gain.exponentialRampToValueAtTime(0.001, 0.58);
+    hum.connect(hFilter);
+    hFilter.connect(hEnv);
+    hEnv.connect(masterGain);
+
+    noise.start(0);
+    hum.start(0.03);
+    noise.stop(totalDur);
+    hum.stop(0.6);
+
+    audioBuf = await off.startRendering();
+  }
+
+  if (!audioBuf || ctrl.signal.aborted) return;
+  await playAudioBuffer(audioBuf, c, ctrl.signal, "aaah");
+}
+
+/**
+ * Synthesizes a quick startled breath intake gasp for surprise or fear.
+ */
+export async function playVocalGasp(gender?: "female" | "male"): Promise<void> {
+  if (typeof window === "undefined") return;
+  const c = unlockAudio();
+  if (!c) return;
+  if (c.state === "suspended") {
+    await Promise.race([c.resume().catch(() => {}), new Promise<void>((r) => setTimeout(r, 250))]);
+  }
+  if (c.state !== "running") return;
+
+  stopSpeaking();
+  const ctrl = new AbortController();
+  speakAbort = ctrl;
+
+  const sr = c.sampleRate || 24000;
+  const totalDur = 0.34;
+  const len = Math.max(1024, Math.floor(totalDur * sr));
+
+  let audioBuf: AudioBuffer | null = null;
+  if (typeof OfflineAudioContext !== "undefined") {
+    const off = new OfflineAudioContext(1, len, sr);
+    const masterGain = off.createGain();
+    masterGain.gain.value = 0.45;
+    masterGain.connect(off.destination);
+
+    const noiseBuf = off.createBuffer(1, len, sr);
+    const nData = noiseBuf.getChannelData(0);
+    let lp = 0;
+    for (let i = 0; i < len; i++) {
+      lp = lp * 0.65 + (Math.random() * 2 - 1) * 0.35;
+      nData[i] = lp;
+    }
+
+    const noise = off.createBufferSource();
+    noise.buffer = noiseBuf;
+    const bf = off.createBiquadFilter();
+    bf.type = "bandpass";
+    bf.frequency.setValueAtTime(gender === "male" ? 1050 : 1280, 0.01);
+    bf.frequency.exponentialRampToValueAtTime(gender === "male" ? 1850 : 2250, 0.24);
+    bf.Q.value = 2.6;
+
+    const env = off.createGain();
+    env.gain.setValueAtTime(0.0001, 0.01);
+    env.gain.linearRampToValueAtTime(0.36, 0.09);
+    env.gain.exponentialRampToValueAtTime(0.001, 0.29);
+
+    noise.connect(bf);
+    bf.connect(env);
+    env.connect(masterGain);
+    noise.start(0.01);
+    noise.stop(totalDur);
+
+    audioBuf = await off.startRendering();
+  }
+
+  if (!audioBuf || ctrl.signal.aborted) return;
+  await playAudioBuffer(audioBuf, c, ctrl.signal, "oh");
+}
+
+export async function playEmotionVocalCue(
+  emotion: string,
+  gender?: "female" | "male",
+): Promise<void> {
+  if (emotion === "laugh") {
+    await playVocalLaugh(gender, 3);
+  } else if (emotion === "crying" || emotion === "heartbroken") {
+    await playVocalCry(gender, 2);
+  } else if (emotion === "surprised" || emotion === "fear") {
+    await playVocalGasp(gender);
+  } else if (emotion === "sad" || emotion === "melancholic" || emotion === "sleepy") {
+    await playVocalSigh(gender);
+  }
+}
+
 export async function speak(
   text: string,
   voice: VoiceChoice,

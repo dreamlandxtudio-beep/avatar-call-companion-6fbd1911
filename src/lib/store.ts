@@ -107,8 +107,9 @@ export function defaultVoiceForGender(
 }
 
 const DEFAULT_CHAR = CHARACTERS[0]!;
-const CONFIG_VERSION = 13;
+const CONFIG_VERSION = 14;
 const CUSTOM_CHARS_KEY = "amiga.customCharacters";
+const REMOVED_ANIME_IDS = new Set(["rei", "haruto", "aoi", "ren"]);
 
 const DEFAULT: Profile = {
   characterId: DEFAULT_CHAR.id,
@@ -122,7 +123,7 @@ const DEFAULT: Profile = {
   voice: { ...DEFAULT_DEVICE_VOICE },
   modelId: "gemini-flash-lite",
   avatarEngine: "mediapipe-mesh",
-  animationStyle: "auto",
+  animationStyle: "human",
   liveAvatarUrl: "http://localhost:7860",
   blurredBackground: false,
   localOnly: false,
@@ -222,20 +223,29 @@ function ensure() {
     saveCustomCharacters(customCharacters);
   }
 
-  if (!profile.configVersion || profile.configVersion < CONFIG_VERSION) {
-    const isBuiltInNonCustom = !profile.characterId || !!characterById(profile.characterId);
+  if (
+    !profile.configVersion ||
+    profile.configVersion < CONFIG_VERSION ||
+    (profile.characterId && REMOVED_ANIME_IDS.has(profile.characterId)) ||
+    profile.avatar?.includes("anime_") ||
+    profile.animationStyle === "anime"
+  ) {
+    const isRemovedAnime =
+      (profile.characterId && REMOVED_ANIME_IDS.has(profile.characterId)) ||
+      profile.avatar?.includes("anime_");
     const shouldResetDefault =
       !profile.name ||
       profile.name === "Luna" ||
       profile.name === "Alma" ||
       profile.name === "Vesper" ||
-      (isBuiltInNonCustom && profile.characterId === "rei");
+      !!isRemovedAnime;
 
     if (shouldResetDefault) {
       profile = {
         ...DEFAULT,
         language: profile.language ?? "es-ES",
         avatarEngine: profile.avatarEngine ?? "mediapipe-mesh",
+        animationStyle: "human",
         liveAvatarUrl: profile.liveAvatarUrl ?? "http://localhost:7860",
         blurredBackground: profile.blurredBackground ?? false,
         localOnly: profile.localOnly ?? false,

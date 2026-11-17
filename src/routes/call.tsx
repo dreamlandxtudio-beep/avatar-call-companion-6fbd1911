@@ -42,7 +42,7 @@ import {
   canListen,
   finishListening,
   listen,
-  playVocalLaugh,
+  playEmotionVocalCue,
   speak,
   startBargeInMonitor,
   stopListening,
@@ -128,9 +128,7 @@ function Call() {
   const camRequestRef = useRef<Promise<boolean> | null>(null);
   const userFaceRef = useRef<UserFaceObservation | undefined>(undefined);
   const recentUserLaughRef = useRef(0);
-  const lastCameraLaughRef = useRef(0);
-  const cameraLaughStreakRef = useRef(0);
-  const laughResetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastVocalCueAtRef = useRef(0);
   const emotionTimersRef = useRef<Array<ReturnType<typeof setTimeout>>>([]);
 
   const clearEmotionTimeline = () => {
@@ -141,18 +139,8 @@ function Call() {
   const isRinging = phase === "ringing";
   const mm = `${Math.floor(secs / 60)}:${(secs % 60).toString().padStart(2, "0")}`;
 
-  const triggerUserLaughReaction = () => {
+  const markUserLaughHeard = () => {
     recentUserLaughRef.current = Date.now();
-    setAiEmotion("laugh");
-    if (!started) {
-      void playVocalLaugh(getProfile().gender, 3);
-    }
-    if (laughResetTimerRef.current) clearTimeout(laughResetTimerRef.current);
-    laughResetTimerRef.current = setTimeout(() => {
-      if (alive.current) {
-        setAiEmotion((cur) => (cur === "laugh" ? "happy" : cur));
-      }
-    }, 2600);
   };
 
   const stopCamera = () => {
@@ -176,7 +164,6 @@ function Call() {
       alive.current = false;
       callTokenRef.current += 1;
       loopActiveRef.current = false;
-      if (laughResetTimerRef.current) clearTimeout(laughResetTimerRef.current);
       clearEmotionTimeline();
       stopListening(true);
       stopSpeaking();
@@ -228,36 +215,7 @@ function Call() {
     };
   }, [camActive]);
 
-  // Camera laughter detection requires sustained genuine smile+open mouth so speech never triggers false laughs
-  useEffect(() => {
-    if (!camActive || !userFace?.detected) {
-      cameraLaughStreakRef.current = 0;
-      return;
-    }
-    if (
-      userFace.emotion === "laugh" &&
-      userFace.smile >= 0.6 &&
-      userFace.mouthOpen >= 0.26 &&
-      phase !== "speaking"
-    ) {
-      cameraLaughStreakRef.current += 1;
-      const now = Date.now();
-      if (cameraLaughStreakRef.current >= 2 && now - lastCameraLaughRef.current > 3600) {
-        lastCameraLaughRef.current = now;
-        cameraLaughStreakRef.current = 0;
-        triggerUserLaughReaction();
-      }
-    } else {
-      cameraLaughStreakRef.current = 0;
-    }
-  }, [
-    camActive,
-    userFace?.detected,
-    userFace?.emotion,
-    userFace?.smile,
-    userFace?.mouthOpen,
-    phase,
-  ]);
+  // Camera observations feed conversational context without forcing premature avatar laughter
 
   const requestCamera = async (): Promise<boolean> => {
     if (camRequestRef.current) return camRequestRef.current;
@@ -364,15 +322,10 @@ function Call() {
         : () => {};
     try {
       const cur = getProfile();
-      if (emotion === "laugh" && !bargeTriggered && isCallValid(token)) {
-        await playVocalLaugh(cur.gender, 3);
-      }
-      if (!bargeTriggered && isCallValid(token)) {
-        await speak(text, cur.voice, cur.language, emotion, {
-          localOnly: cur.localOnly,
-          gender: cur.gender,
-        });
-      }
+      await speak(text, cur.voice, cur.language, emotion, {
+        localOnly: cur.localOnly,
+        gender: cur.gender,
+      });
     } catch (error) {
       if (isCallValid(token))
         setMicNote(error instanceof Error ? error.message : "La voz no está disponible.");
@@ -430,6 +383,17 @@ function Call() {
     const beats = deriveSpeechEmotionTimeline(r, em, explicitTimeline);
     setAiEmotion(beats[0]?.emotion ?? em);
     setPhase("speaking");
+    const hasVocalCue =
+      em === "laugh" ||
+      em === "crying" ||
+      em === "heartbroken" ||
+      em === "surprised" ||
+      em === "fear";
+    if (!textModeRef.current && hasVocalCue && Date.now() - lastVocalCueAtRef.current >= 12000) {
+      lastVocalCueAtRef.current = Date.now();
+      await playEmotionVocalCue(em, getProfile().gender).catch(() => {});
+      if (!isCallValid(token)) return;
+    }
     await speakWithBargeIn(r, token, em, beats);
   };
 
@@ -456,7 +420,7 @@ function Call() {
             if (isCallValid(token)) setMicVol(lv);
           },
           onLaugh: () => {
-            if (isCallValid(token)) triggerUserLaughReaction();
+            if (isCallValid(token)) markUserLaughHeard();
           },
         });
         if (!isCallValid(token)) return;
@@ -698,7 +662,6 @@ function Call() {
     alive.current = false;
     callTokenRef.current += 1;
     loopActiveRef.current = false;
-    if (laughResetTimerRef.current) clearTimeout(laughResetTimerRef.current);
     clearEmotionTimeline();
     stopListening(true);
     stopSpeaking();

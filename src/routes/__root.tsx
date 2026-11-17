@@ -103,14 +103,12 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { title: "YUME — conexiones con personajes de IA" },
       {
         name: "description",
-        content:
-          "Conversaciones y videollamadas con compañeros adultos ficticios, realistas y anime.",
+        content: "Conversaciones y videollamadas con compañeros adultos ficticios fotorrealistas.",
       },
       { property: "og:title", content: "YUME — conexiones con personajes de IA" },
       {
         property: "og:description",
-        content:
-          "Conversaciones y videollamadas con compañeros adultos ficticios, realistas y anime.",
+        content: "Conversaciones y videollamadas con compañeros adultos ficticios fotorrealistas.",
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },

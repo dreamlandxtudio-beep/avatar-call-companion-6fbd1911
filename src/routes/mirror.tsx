@@ -14,7 +14,7 @@ import { AnimatedAvatar } from "@/components/AnimatedAvatar";
 import { Button } from "@/components/ui/button";
 import { AVATAR_EXPRESSIONS, type AvatarEmotion } from "@/lib/ai";
 import { setProfile, useProfile } from "@/lib/store";
-import { playVocalLaugh, speak, stopSpeaking, unlockAudio } from "@/lib/voice";
+import { playEmotionVocalCue, speak, stopSpeaking } from "@/lib/voice";
 import {
   analyzeUserVideoFrame,
   ensureUserFaceTracker,
@@ -45,6 +45,12 @@ const SAMPLE_SPEECH_ES: Partial<Record<AvatarEmotion, string>> = {
   happy: "¡Qué alegría verte hoy! Me encanta cómo se siente conversar así contigo.",
   euphoric: "¡Esto es increíble, no sabes lo emocionado que me siento ahora mismo!",
   laugh: "¡Jajaja, qué ocurrencia! De verdad me hiciste reír muchísimo con eso.",
+  smirk: "Qué curioso… casi parece que me estás ocultando algo interesante.",
+  compassionate: "Ven acá, todo va a estar bien. Estoy contigo pase lo que pase.",
+  intense: "Mírame bien… sabes perfectamente que no voy a apartar la vista de ti.",
+  bitingLip: "No me hagas mirarte así, que luego me cuesta disimular lo que quiero.",
+  sarcastic: "Ah, claro… seguro que fue una coincidencia inocente, ¿verdad?",
+  eyeroll: "En serio no puedo creer que vuelvas a decir eso otra vez.",
   sad: "Lo siento mucho… me pesa verte pasar por un momento tan difícil.",
   crying: "Perdóname… se me llenan los ojos de lágrimas al escuchar todo esto.",
   heartbroken: "Me rompe el corazón saber lo que pasó, estoy aquí contigo en este duelo.",
@@ -67,7 +73,6 @@ function Mirror() {
   const [mode, setMode] = useState<"mirror" | "subtle">("mirror");
   const [showMesh, setShowMesh] = useState(false);
   const [speakingTest, setSpeakingTest] = useState(false);
-  const [style, setStyle] = useState<"auto" | "human" | "anime">(p.animationStyle ?? "auto");
   const [pose, setPose] = useState<AvatarEmotion>("neutral");
   const [strength, setStrength] = useState(0.8);
   const stop = () => {
@@ -84,6 +89,7 @@ function Mirror() {
   useEffect(
     () => () => {
       generation.current++;
+      speechGen.current++;
       stopUserCamera(stream.current);
       stopSpeaking();
     },
@@ -138,20 +144,33 @@ function Mirror() {
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
   }, [running]);
+  const speechGen = useRef(0);
   const toggleSpeechTest = async () => {
     if (speakingTest) {
+      speechGen.current++;
       stopSpeaking();
       setSpeakingTest(false);
       return;
     }
+    const token = ++speechGen.current;
     setSpeakingTest(true);
     try {
+      if (
+        pose === "laugh" ||
+        pose === "crying" ||
+        pose === "heartbroken" ||
+        pose === "sad" ||
+        pose === "melancholic" ||
+        pose === "sleepy" ||
+        pose === "surprised" ||
+        pose === "fear"
+      ) {
+        await playEmotionVocalCue(pose, p.gender).catch(() => {});
+        if (token !== speechGen.current) return;
+      }
       const sample =
         SAMPLE_SPEECH_ES[pose] ??
         `Probando la expresión ${AVATAR_EXPRESSIONS.find((e) => e.id === pose)?.label ?? pose} al hablar con naturalidad.`;
-      if (pose === "laugh") {
-        await playVocalLaugh(p.gender, 4);
-      }
       await speak(sample, p.voice, p.language, pose, {
         localOnly: p.localOnly,
         gender: p.gender,
@@ -159,7 +178,9 @@ function Mirror() {
     } catch {
       /* voice fallback ignored */
     } finally {
-      setSpeakingTest(false);
+      if (token === speechGen.current) {
+        setSpeakingTest(false);
+      }
     }
   };
   const adjusted = face
@@ -234,7 +255,7 @@ function Mirror() {
               emotion={pose}
               showMesh={showMesh}
               blurredBackground={p.blurredBackground}
-              animationStyle={style}
+              animationStyle="human"
               userFace={adjusted}
               mirrorMode={mode === "mirror"}
               fit="cover"
@@ -309,19 +330,6 @@ function Mirror() {
           <Aperture />
           Fondo desenfocado
         </Button>
-        <label className="flex items-center gap-2 text-sm">
-          Retrato
-          <select
-            aria-label="Tipo de animación"
-            className="rounded-lg border border-input bg-card px-2.5 py-1.5 text-sm outline-none"
-            value={style}
-            onChange={(e) => setStyle(e.target.value as typeof style)}
-          >
-            <option value="auto">Automático</option>
-            <option value="human">Persona</option>
-            <option value="anime">Anime / dibujo</option>
-          </select>
-        </label>
         <label className="flex items-center gap-3 text-sm">
           Intensidad
           <input
@@ -365,14 +373,7 @@ function Mirror() {
                       key={entry.id}
                       type="button"
                       aria-pressed={selected}
-                      onClick={() => {
-                        setPose(entry.id);
-                        if (entry.id === "laugh") {
-                          unlockAudio();
-                          stopSpeaking();
-                          void playVocalLaugh(p.gender, 4);
-                        }
-                      }}
+                      onClick={() => setPose(entry.id)}
                       className={`flex flex-col items-start rounded-xl border px-3 py-2.5 text-left transition-colors ${
                         selected
                           ? "border-primary bg-primary/12 text-foreground shadow-sm"

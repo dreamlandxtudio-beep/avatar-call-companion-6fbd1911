@@ -326,6 +326,10 @@ export type AvatarEmotion =
   | "euphoric"
   | "laugh"
   | "flirty"
+  | "smirk"
+  | "compassionate"
+  | "intense"
+  | "bitingLip"
   | "proud"
   | "sad"
   | "crying"
@@ -335,6 +339,8 @@ export type AvatarEmotion =
   | "furious"
   | "disgusted"
   | "skeptical"
+  | "sarcastic"
+  | "eyeroll"
   | "surprised"
   | "fear"
   | "nervous"
@@ -386,7 +392,31 @@ export const AVATAR_EXPRESSIONS: ExpressionCatalogEntry[] = [
   {
     id: "flirty",
     label: "Coqueto",
-    detail: "Media sonrisa ladeada, párpado suave y rubor",
+    detail: "Una ceja alzada, sonrisa ladeada y rubor",
+    category: "Alegría y afecto",
+  },
+  {
+    id: "smirk",
+    label: "Pícaro / ladeada",
+    detail: "Media sonrisa asimétrica confiada y cómplice",
+    category: "Alegría y afecto",
+  },
+  {
+    id: "compassionate",
+    label: "Compasivo",
+    detail: "Mirada tierna, inclinación empática y calidez suave",
+    category: "Alegría y afecto",
+  },
+  {
+    id: "intense",
+    label: "Dark romance",
+    detail: "Mentón bajo, mirada intensa hacia arriba y media sonrisa",
+    category: "Alegría y afecto",
+  },
+  {
+    id: "bitingLip",
+    label: "Deseo / labio",
+    detail: "Labio inferior suavemente mordido, párpados suaves y rubor",
     category: "Alegría y afecto",
   },
   {
@@ -434,7 +464,7 @@ export const AVATAR_EXPRESSIONS: ExpressionCatalogEntry[] = [
   {
     id: "furious",
     label: "Enojadísimo",
-    detail: "Ceño intenso, fosas nasales tensas y mandíbula firme",
+    detail: "Ceño intenso, fosas nasales tensas y dientes firmes",
     category: "Enojo y tensión",
   },
   {
@@ -447,6 +477,18 @@ export const AVATAR_EXPRESSIONS: ExpressionCatalogEntry[] = [
     id: "skeptical",
     label: "Escéptico",
     detail: "Una ceja arqueada y comisura pensativa",
+    category: "Enojo y tensión",
+  },
+  {
+    id: "sarcastic",
+    label: "Sarcástico",
+    detail: "Una ceja levantada, sonrisa irónica ladeada y desdén",
+    category: "Enojo y tensión",
+  },
+  {
+    id: "eyeroll",
+    label: "Fastidio / ojos en blanco",
+    detail: "Ojos volteados hacia arriba y labio fruncido de hartazgo",
     category: "Enojo y tensión",
   },
   {
@@ -525,6 +567,27 @@ const EMOTION_MAP: Record<string, AvatarEmotion> = {
   coqueto: "flirty",
   coqueta: "flirty",
   flirty: "flirty",
+  picaro: "smirk",
+  pícaro: "smirk",
+  picara: "smirk",
+  pícara: "smirk",
+  smirk: "smirk",
+  ladeada: "smirk",
+  compasivo: "compassionate",
+  compasiva: "compassionate",
+  compasion: "compassionate",
+  compasión: "compassionate",
+  tierno: "compassionate",
+  tierna: "compassionate",
+  compassionate: "compassionate",
+  intenso: "intense",
+  intensa: "intense",
+  dark: "intense",
+  seductor: "intense",
+  seductora: "intense",
+  intense: "intense",
+  deseo: "bitingLip",
+  bitinglip: "bitingLip",
   orgulloso: "proud",
   orgullosa: "proud",
   seguro: "proud",
@@ -574,6 +637,20 @@ const EMOTION_MAP: Record<string, AvatarEmotion> = {
   escéptica: "skeptical",
   dudoso: "skeptical",
   skeptical: "skeptical",
+  sarcastico: "sarcastic",
+  sarcástico: "sarcastic",
+  sarcastica: "sarcastic",
+  sarcástica: "sarcastic",
+  ironico: "sarcastic",
+  irónico: "sarcastic",
+  ironica: "sarcastic",
+  irónica: "sarcastic",
+  sarcastic: "sarcastic",
+  fastidio: "eyeroll",
+  fastidiado: "eyeroll",
+  fastidiada: "eyeroll",
+  hartazgo: "eyeroll",
+  eyeroll: "eyeroll",
   sorprendido: "surprised",
   sorprendida: "surprised",
   surprised: "surprised",
@@ -699,7 +776,8 @@ export function extractEmotion(raw: string): {
         emotion === "happy" ||
         emotion === "laugh" ||
         emotion === "euphoric" ||
-        emotion === "flirty"
+        emotion === "flirty" ||
+        emotion === "smirk"
       ) {
         emotion = /(llor|lágrima|desconsol|rompe el corazón|horrible)/i.test(trimmed)
           ? "crying"
@@ -712,11 +790,17 @@ export function extractEmotion(raw: string): {
         emotion = "crying";
       } else if (/(lo siento|qué pena|qué triste|me duele mucho|💔|😞)/i.test(trimmed)) {
         emotion = "sad";
+      } else if (/(comprendo|aquí estoy para ti|no estás sol|qué duro debe ser)/i.test(trimmed)) {
+        emotion = "compassionate";
+      } else if (/(qué fastidio|otra vez con lo mismo|qué pesado|ya me cansé|🙄)/i.test(trimmed)) {
+        emotion = "eyeroll";
+      } else if (/(ajá, claro|sarcasmo|qué original|obvio que sí|😏)/i.test(trimmed)) {
+        emotion = "sarcastic";
       } else if (
         /(en serio\?!|no puede ser|increíble|guau|wow|¡qué sorpresa|😮|😲)/i.test(trimmed)
       ) {
         emotion = "surprised";
-      } else if (/(furios|indignad|harto|harta|rabia|🤬)/i.test(trimmed)) {
+      } else if (/(furios|indignad|rabia|🤬)/i.test(trimmed)) {
         emotion = "furious";
       } else if (/(molesta|basta|inaceptable|enojad|😠|😡)/i.test(trimmed)) {
         emotion = "angry";
@@ -726,10 +810,6 @@ export function extractEmotion(raw: string): {
         emotion = "fear";
       } else if (/(asco|qué asco|repugn|🤢)/i.test(trimmed)) {
         emotion = "disgusted";
-      } else if (
-        /(qué curioso|no me digas|claro que sí|ajá|seguro\?|en serio\.\.\.|😏|🤨)/i.test(trimmed)
-      ) {
-        emotion = "skeptical";
       } else if (/(sonroj|qué vergüenza|me pones rojo|😳|😊)/i.test(trimmed)) {
         emotion = "blushing";
       } else if (/(sueño|cansad|bostezo|agotad|😴)/i.test(trimmed)) {
@@ -782,6 +862,11 @@ export function deriveSpeechEmotionTimeline(
           emotion: /(llor|lágrima|muri|fallec|duelo)/i.test(clean) ? "crying" : "melancholic",
         },
       ];
+    case "compassionate":
+      return [
+        { at: 0, emotion: "compassionate" },
+        { at: 0.55, emotion: "happy" },
+      ];
     case "melancholic":
       return [
         { at: 0, emotion: "melancholic" },
@@ -809,13 +894,40 @@ export function deriveSpeechEmotionTimeline(
     case "flirty":
       return [
         { at: 0, emotion: "flirty" },
-        { at: 0.46, emotion: "blushing" },
-        { at: 0.78, emotion: "flirty" },
+        { at: 0.44, emotion: "smirk" },
+        { at: 0.78, emotion: "blushing" },
+      ];
+    case "smirk":
+      return [
+        { at: 0, emotion: "smirk" },
+        { at: 0.55, emotion: "flirty" },
+      ];
+    case "intense":
+      return [
+        { at: 0, emotion: "intense" },
+        { at: 0.52, emotion: "smirk" },
+        { at: 0.82, emotion: "intense" },
+      ];
+    case "bitingLip":
+      return [
+        { at: 0, emotion: "bitingLip" },
+        { at: 0.55, emotion: "flirty" },
       ];
     case "blushing":
       return [
         { at: 0, emotion: "blushing" },
         { at: 0.55, emotion: "flirty" },
+      ];
+    case "sarcastic":
+      return [
+        { at: 0, emotion: "sarcastic" },
+        { at: 0.55, emotion: "skeptical" },
+        { at: 0.82, emotion: "smirk" },
+      ];
+    case "eyeroll":
+      return [
+        { at: 0, emotion: "eyeroll" },
+        { at: 0.55, emotion: "sarcastic" },
       ];
     case "angry":
       return [
@@ -871,8 +983,8 @@ export function deriveSpeechEmotionTimeline(
 export function systemPrompt(p: Profile, callMode = false, visualContext?: string) {
   const es = p.language === "es-ES";
   const context = es
-    ? " Eres un personaje adulto de compañía romántica ficticia. Sé cálido, atento y expresivo con naturalidad; respeta límites y evita posesividad o dependencia. Nunca afirmes ser una persona real. Responde sin preámbulos, ajustando tu emoción estrictamente al tema (nunca sonrías ni rías ante duelos, malas noticias o tristeza; usa [triste], [llorando], [desconsolado] o [melancolico]). Puedes alternar brevemente una segunda etiqueta acorde dentro de tu respuesta si cambia el matiz emocional."
-    : " You are an adult fictional romantic companion. Be warm, attentive, and naturally expressive; respect boundaries and avoid possessiveness or dependency. Never claim to be a real person. Reply directly, matching emotion strictly to context (never smile or laugh on grief or sad news; use [sad], [crying], [heartbroken], or [melancholic]). You may include a second context-fitting inline emotion tag if your tone shifts naturally.";
+    ? " Eres un personaje adulto de compañía romántica ficticia. Sé cálido, atento y expresivo con naturalidad; respeta límites y evita posesividad o dependencia. Nunca afirmes ser una persona real. Responde sin preámbulos, ajustando tu emoción estrictamente al tema (nunca sonrías ni rías ante duelos, malas noticias o tristeza; usa [triste], [llorando], [desconsolado] o [compasivo]). Solo usa [riendo] si tú o el usuario dijeron algo genuinamente gracioso o cómico. Si el usuario insiste en algo fastidioso, puedes usar [fastidio] o [sarcastico]. Puedes alternar brevemente una segunda etiqueta acorde dentro de tu respuesta si cambia el matiz emocional."
+    : " You are an adult fictional romantic companion. Be warm, attentive, and naturally expressive; respect boundaries and avoid possessiveness or dependency. Never claim to be a real person. Reply directly, matching emotion strictly to context (never smile or laugh on grief or sad news; use [sad], [crying], [heartbroken], or [compassionate]). Only use [laugh] when something genuinely funny was said. If the user is being annoying, you may use [eyeroll] or [sarcastic]. You may include a second context-fitting inline emotion tag if your tone shifts naturally.";
   const savedMemory = memoryPrompt(p.characterId);
   const visualNote = visualContext?.trim()
     ? es
@@ -881,9 +993,9 @@ export function systemPrompt(p: Profile, callMode = false, visualContext?: strin
     : "";
   const voiceGender = p.gender === "male" ? "masculina" : "femenina";
   const esTags =
-    "[neutral], [feliz], [euforico], [riendo], [coqueto], [orgulloso], [sonrojado], [triste], [llorando], [desconsolado], [melancolico], [enojado], [enojadisimo], [asco], [esceptico], [sorprendido], [miedo], [nervioso], [sudando], [ebrio], [drogado], [cansado], [mareado] o [dolor]";
+    "[neutral], [feliz], [euforico], [riendo], [coqueto], [picaro], [compasivo], [intenso], [orgulloso], [sonrojado], [triste], [llorando], [desconsolado], [melancolico], [enojado], [enojadisimo], [asco], [esceptico], [sarcastico], [fastidio], [sorprendido], [miedo], [nervioso], [sudando], [ebrio], [drogado], [cansado], [mareado] o [dolor]";
   const enTags =
-    "[neutral], [happy], [euphoric], [laugh], [flirty], [proud], [blushing], [sad], [crying], [heartbroken], [melancholic], [angry], [furious], [disgusted], [skeptical], [surprised], [fear], [nervous], [sweating], [drunk], [high], [sleepy], [sick], or [pain]";
+    "[neutral], [happy], [euphoric], [laugh], [flirty], [smirk], [compassionate], [intense], [proud], [blushing], [sad], [crying], [heartbroken], [melancholic], [angry], [furious], [disgusted], [skeptical], [sarcastic], [eyeroll], [surprised], [fear], [nervous], [sweating], [drunk], [high], [sleepy], [sick], or [pain]";
   if (callMode) {
     return es
       ? `Eres ${p.name}. Personalidad: ${p.personality}. Historia: ${p.backstory}. Estilo: ${p.style}. Estás en una videollamada en vivo (voz ${voiceGender}). Responde siempre en español natural en primera persona. Empieza SIEMPRE tu respuesta con una etiqueta emocional de esta lista: ${esTags}. Luego escribe 1 o 2 frases breves y directas (menos de 26 palabras). ${context}${visualNote}${savedMemory}`

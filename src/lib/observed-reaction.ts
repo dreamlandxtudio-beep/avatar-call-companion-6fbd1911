@@ -13,7 +13,7 @@ export type ObservedReaction = {
 export function createObservedReaction(): ObservedReaction {
   return { since: null, lastSample: -1, pendingAt: 0, until: 0, cooldownUntil: 0, strength: 0 };
 }
-/** Only sustained, freshly seen smiling/squinting can trigger an occasional response. */
+/** Only sustained, freshly seen smiling/squinting can trigger an occasional subtle warm nod/smile. */
 export function stepObservedReaction(s: ObservedReaction, now: number, face?: UserFaceObservation) {
   const fresh =
     !!face?.detected && now >= face.updatedAt && now - face.updatedAt <= OBSERVATION_MAX_AGE_MS;
@@ -26,11 +26,7 @@ export function stepObservedReaction(s: ObservedReaction, now: number, face?: Us
   if (face.updatedAt !== s.lastSample) {
     if (face.updatedAt - s.lastSample > OBSERVATION_MAX_AGE_MS) s.since = null;
     s.lastSample = face.updatedAt;
-    const smiling =
-      face.smile >= 0.66 &&
-      face.browFurrow < 0.2 &&
-      (face.eyeSquint ?? 0) >= 0.22 &&
-      face.mouthOpen >= 0.22;
+    const smiling = face.smile >= 0.58 && (face.eyeSquint ?? 0) >= 0.16;
     if (!smiling) s.since = null;
     else if (s.since === null) s.since = face.updatedAt;
     if (
@@ -40,14 +36,14 @@ export function stepObservedReaction(s: ObservedReaction, now: number, face?: Us
       now >= s.cooldownUntil &&
       !s.pendingAt
     ) {
-      s.pendingAt = now + 280;
-      s.strength = Math.min(0.6, face.smile * 0.65);
-      s.cooldownUntil = now + 8000;
+      s.pendingAt = now + 380;
+      s.strength = Math.min(0.24, face.smile * 0.26);
+      s.cooldownUntil = now + 9500;
     }
   }
   if (s.pendingAt && now >= s.pendingAt) {
     s.pendingAt = 0;
-    s.until = now + 1700;
+    s.until = now + 1500;
   }
   return now < s.until ? s.strength * Math.min(1, (s.until - now) / 450) : 0;
 }
@@ -122,12 +118,12 @@ export function stepObservedEmpathy(
     if (gap > OBSERVATION_MAX_AGE_MS) {
       st.sustainedMs = 0;
     } else {
-      const smileSig = Math.max(0, face.smile - 0.34);
-      const furrowSig = Math.max(0, face.browFurrow - 0.18);
+      const smileSig = Math.max(0, face.smile - 0.28);
+      const furrowSig = Math.max(0, face.browFurrow - 0.25);
       const raiseSig = Math.max(0, face.browRaise - 0.28);
       const frownSig = Math.max(0, (face.mouthFrown ?? 0) - 0.24);
       const wideSig = Math.max(0, (face.eyeWide ?? 0) - 0.26);
-      const noseSig = Math.max(0, (face.noseSneer ?? 0) - 0.2);
+      const noseSig = Math.max(0, (face.noseSneer ?? 0) - 0.24);
       const poseMag = Math.max(
         Math.abs(face.headYaw) - 0.14,
         Math.abs(face.headPitch) - 0.14,
@@ -147,11 +143,11 @@ export function stepObservedEmpathy(
         st.cooldownUntil = now + 2600;
         st.target = {
           smile: Math.min(0.32, Math.max(0, face.smile * 0.34)),
-          browFurrow: Math.min(0.46, Math.max(0, face.browFurrow * 0.52)),
+          browFurrow: Math.min(0.36, Math.max(0, face.browFurrow * 0.42)),
           browRaise: Math.min(0.34, Math.max(0, face.browRaise * 0.36)),
           frown: Math.min(0.3, Math.max(0, (face.mouthFrown ?? 0) * 0.38)),
           eyeWide: Math.min(0.28, Math.max(0, (face.eyeWide ?? 0) * 0.34)),
-          noseScrunch: Math.min(0.42, Math.max(0, (face.noseSneer ?? 0) * 0.52)),
+          noseScrunch: Math.min(0.32, Math.max(0, (face.noseSneer ?? 0) * 0.4)),
           headYaw: Math.max(-0.28, Math.min(0.28, face.headYaw * 0.34)),
           headPitch: Math.max(-0.24, Math.min(0.24, face.headPitch * 0.32)),
           headRoll: Math.max(-0.06, Math.min(0.06, (face.headRoll ?? 0) * 0.22)),

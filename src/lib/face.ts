@@ -33,6 +33,8 @@ export type EyeCurveProfile = {
   lowerArch: [number, number, number, number, number, number, number, number];
   halfW: number;
   scaleY: number;
+  outerReach: number;
+  outerWingY: number;
 };
 
 export type FacePts = {
@@ -74,8 +76,16 @@ export type FacePts = {
   hairLeft: [number, number];
   hairRight: [number, number];
   neckBase: [number, number];
+  lowerNeck: [number, number];
+  adamApple: [number, number];
+  rightTrapezius: [number, number];
+  leftTrapezius: [number, number];
   rightShoulder: [number, number];
   leftShoulder: [number, number];
+  rightCheekPos: [number, number];
+  leftCheekPos: [number, number];
+  rightInnerCanthus: [number, number];
+  leftInnerCanthus: [number, number];
   hands: HandKeypoints[];
   colors: FaceColors;
   segMask?: Float32Array | undefined;
@@ -259,6 +269,8 @@ function extractEyeCurveProfile(
       ],
       halfW,
       scaleY: maxAbs,
+      outerReach: 1.26,
+      outerWingY: 0,
     },
   };
 }
@@ -413,20 +425,22 @@ function analyzePhotoFeatures(
         ((pts[idx]![1] - eMinY) / eh) * cropH,
       ]);
 
-      // Pass 1: Estimate sclera reference luma and refine exact cornea center & outer limbus radius
-      const eyeLumas: number[] = [];
+      // Pass 1: Identify clean outer sclera reference color (supports white, warm, or stylized tinted sclera)
       const eyePixels: Array<{
         nx: number;
         ny: number;
         fy: number;
+        relX: number;
+        relY: number;
         luma: number;
         r: number;
         g: number;
         b: number;
       }> = [];
+      const eyeHalfW = Math.max(0.01, ew * aspect * 0.5);
       for (let py = 0; py < cropH; py++) {
         const fy = (py + 0.5) / cropH;
-        if (fy < 0.2 || fy > 0.88) continue;
+        if (fy < 0.16 || fy > 0.9) continue;
         for (let px = 0; px < cropW; px++) {
           if (!pointInPoly(px + 0.5, py + 0.5, eyePoly)) continue;
           const nx = eMinX + ((px + 0.5) / cropW) * ew;
@@ -436,43 +450,75 @@ function analyzePhotoFeatures(
           const g = edata[off + 1]!;
           const b = edata[off + 2]!;
           const luma = 0.299 * r + 0.587 * g + 0.114 * b;
-          eyeLumas.push(luma);
-          eyePixels.push({ nx, ny, fy, luma, r, g, b });
+          const relX = (nx - eyeCenter[0]) * aspect * axis.ux + (ny - eyeCenter[1]) * axis.uy;
+          const relY = (nx - eyeCenter[0]) * aspect * axis.vx + (ny - eyeCenter[1]) * axis.vy;
+          eyePixels.push({ nx, ny, fy, relX, relY, luma, r, g, b });
         }
       }
 
       let refinedPupil: [number, number] = [pupil[0], pupil[1]];
-      let refinedIrisRad = irisRad * 1.16;
+      let refinedIrisRad = irisRad * 1.06;
 
-      if (eyeLumas.length >= 20) {
-        const sortedL = [...eyeLumas].sort((a, b) => a - b);
-        const scleraLuma =
-          sortedL[Math.min(sortedL.length - 1, Math.floor(sortedL.length * 0.78))]!;
-        const darkCut = scleraLuma * 0.76;
+      // Helper to sample bilinear RGB inside the eye crop for radial edge-jump scanning
+      const sampleEyeCrop = (
+        nx: number,
+        ny: number,
+      ): { luma: number; r: number; g: number; b: number } => {
+        const px = Math.min(cropW - 1, Math.max(0, Math.round(((nx - eMinX) / ew) * (cropW - 1))));
+        const py = Math.min(cropH - 1, Math.max(0, Math.round(((ny - eMinY) / eh) * (cropH - 1))));
+        const off = (py * cropW + px) * 4;
+        const r = edata[off]!;
+        const g = edata[off + 1]!;
+        const b = edata[off + 2]!;
+        return { r, g, b, luma: 0.299 * r + 0.587 * g + 0.114 * b };
+      };
 
+      if (eyePixels.length >= 24) {
+        // Estimate baseline sclera signature from bright lateral zones (excluding outer corners & center iris)
+        const latBright = eyePixels
+          .filter((p) => {
+            const d0 = Math.hypot((p.nx - pupil[0]) * aspect, p.ny - pupil[1]);
+            return (
+              p.fy >= 0.34 &&
+              p.fy <= 0.74 &&
+              d0 >= irisRad * 1.14 &&
+              Math.abs(p.relX) <= eyeHalfW * 0.78
+            );
+          })
+          .sort((a, b) => a.luma - b.luma);
+        const scleraRef =
+          latBright.length >= 4
+            ? latBright[Math.floor(latBright.length * 0.58)]!
+            : (() => {
+                const sorted = [...eyePixels].sort((a, b) => a.luma - b.luma);
+                return sorted[Math.floor(sorted.length * 0.78)]!;
+              })();
+
+        const colDist = (r: number, g: number, b: number) =>
+          Math.hypot(r - scleraRef.r, g - scleraRef.g, b - scleraRef.b);
+        const scleraLuma = scleraRef.luma;
+
+        // Pass 1b: Re-center cornea by bilateral color-difference weighting inside iris window (avoids upper lashes)
         let sumW = 0;
         let sumX = 0;
         let sumY = 0;
-        const eyeHalfW = Math.max(0.01, ew * aspect * 0.5);
         for (const p of eyePixels) {
-          if (p.fy < 0.26 || p.fy > 0.84) continue;
-          // Exclude inner/outer eye corners (caruncle/shadow) so dark corner pixels never pull pupils cross-eyed
-          const relCenter = Math.abs(
-            (p.nx - eyeCenter[0]) * aspect * axis.ux + (p.ny - eyeCenter[1]) * axis.uy,
-          );
-          if (relCenter > eyeHalfW * 0.56) continue;
+          if (p.fy < 0.28 || p.fy > 0.84) continue;
           const d0 = Math.hypot((p.nx - pupil[0]) * aspect, p.ny - pupil[1]);
-          if (d0 > irisRad * 1.18 || p.luma >= darkCut) continue;
-          const w = Math.pow(scleraLuma - p.luma, 2);
-          sumW += w;
-          sumX += p.nx * w;
-          sumY += p.ny * w;
+          if (d0 > irisRad * 1.25) continue;
+          const dc = colDist(p.r, p.g, p.b);
+          const dl = Math.max(0, scleraLuma - p.luma);
+          if (dc < 24 && dl < 22) continue;
+          const w = dc * 0.7 + dl * 1.1;
+          sumW += w * w;
+          sumX += p.nx * w * w;
+          sumY += p.ny * w * w;
         }
         if (sumW > 0) {
           const cx = sumX / sumW;
           const cy = sumY / sumW;
           const shiftDist = Math.hypot((cx - pupil[0]) * aspect, cy - pupil[1]);
-          const maxShift = irisRad * 0.16;
+          const maxShift = irisRad * 0.28;
           if (shiftDist > 1e-6) {
             const clampScale = Math.min(1, maxShift / shiftDist);
             refinedPupil = [
@@ -482,68 +528,77 @@ function analyzePhotoFeatures(
           }
         }
 
-        // Measure crisp inner-limbus cornea radius without grabbing surrounding lashes/sclera
-        const limbusCut = scleraLuma * 0.81;
-        const radialDists: number[] = [];
-        for (const p of eyePixels) {
-          if (p.fy < 0.3 || p.fy > 0.82) continue;
-          const d = Math.hypot((p.nx - refinedPupil[0]) * aspect, p.ny - refinedPupil[1]);
-          if (d <= irisRad * 1.24 && p.luma < limbusCut) {
-            radialDists.push(d);
+        // Pass 1c: Scan radially outward from pupil along clean lower/horizontal angles to find sharpest iris->sclera color jump & symmetry
+        const scanRadiusAtAngle = (angRad: number): number | null => {
+          const ux = Math.cos(angRad);
+          const uy = Math.sin(angRad);
+          const minR = Math.max(0.002, irisRad * 0.55);
+          const maxR = Math.min(eyeHalfW * 0.85, irisRad * 1.56);
+          const step = Math.max(0.0008, (maxR - minR) / 16);
+          let bestR = -1;
+          let bestJump = 18;
+          for (let r = minR; r <= maxR - step; r += step) {
+            const inPt = sampleEyeCrop(
+              refinedPupil[0] + (ux * (r - step * 0.7)) / aspect,
+              refinedPupil[1] + uy * (r - step * 0.7),
+            );
+            const outPt = sampleEyeCrop(
+              refinedPupil[0] + (ux * (r + step * 0.7)) / aspect,
+              refinedPupil[1] + uy * (r + step * 0.7),
+            );
+            const inToSclera = colDist(inPt.r, inPt.g, inPt.b);
+            const outToSclera = colDist(outPt.r, outPt.g, outPt.b);
+            const stepGrad = Math.hypot(outPt.r - inPt.r, outPt.g - inPt.g, outPt.b - inPt.b);
+            const jump = (inToSclera - outToSclera) * 1.15 + stepGrad * 0.65;
+            if (inToSclera > 24 && jump > bestJump) {
+              bestJump = jump;
+              bestR = r;
+            }
+          }
+          return bestR > 0 ? bestR : null;
+        };
+
+        const leftAngles = [Math.PI, Math.PI - 0.28, Math.PI + 0.26];
+        const rightAngles = [0, 0.28, -0.26];
+        const downAngles = [Math.PI * 0.5, Math.PI * 0.5 - 0.35, Math.PI * 0.5 + 0.35];
+        const leftHits = leftAngles.map(scanRadiusAtAngle).filter((v): v is number => v !== null);
+        const rightHits = rightAngles.map(scanRadiusAtAngle).filter((v): v is number => v !== null);
+        const downHits = downAngles.map(scanRadiusAtAngle).filter((v): v is number => v !== null);
+
+        if (leftHits.length > 0 && rightHits.length > 0) {
+          const avgL = leftHits.reduce((a, b) => a + b, 0) / leftHits.length;
+          const avgR = rightHits.reduce((a, b) => a + b, 0) / rightHits.length;
+          const symShift = Math.max(-irisRad * 0.22, Math.min(irisRad * 0.22, (avgR - avgL) * 0.5));
+          refinedPupil = [refinedPupil[0] + symShift / aspect, refinedPupil[1]];
+          const symRad = (avgL + avgR) * 0.5;
+          const allHits = [...leftHits, ...rightHits, ...downHits].sort((a, b) => a - b);
+          const upperHit =
+            allHits[Math.min(allHits.length - 1, Math.floor(allHits.length * 0.82))] ?? symRad;
+          refinedIrisRad = Math.min(
+            eyeHalfW * 0.72,
+            irisRad * 1.45,
+            Math.max(irisRad * 0.96, Math.max(symRad, upperHit) * 1.09),
+          );
+        } else {
+          const allHits = [...leftHits, ...rightHits, ...downHits].sort((a, b) => a - b);
+          if (allHits.length >= 2) {
+            const hitR = allHits[Math.min(allHits.length - 1, Math.floor(allHits.length * 0.82))]!;
+            refinedIrisRad = Math.min(
+              eyeHalfW * 0.72,
+              irisRad * 1.45,
+              Math.max(irisRad * 0.96, hitR * 1.1),
+            );
           }
         }
-        if (radialDists.length >= 12) {
-          radialDists.sort((a, b) => a - b);
-          const p85 =
-            radialDists[Math.min(radialDists.length - 1, Math.floor(radialDists.length * 0.85))]!;
-          refinedIrisRad = Math.min(eyeHalfW * 0.54, Math.max(irisRad * 0.98, p85));
-        }
       }
 
-      type ScleraCand = { score: number; rgb: [number, number, number] };
-      const negCands: ScleraCand[] = [];
-      const posCands: ScleraCand[] = [];
-      const allCands: ScleraCand[] = [];
-      const fallbackCands: ScleraCand[] = [];
-      const eyeHalfW = Math.max(0.01, ew * aspect * 0.5);
-
-      for (const p of eyePixels) {
-        // Aspect-corrected cornea + limbus exclusion across full clean exposed sclera band
-        const dPupil = Math.hypot((p.nx - refinedPupil[0]) * aspect, p.ny - refinedPupil[1]);
-        if (dPupil < refinedIrisRad * 1.18) continue;
-        if (p.fy < 0.36 || p.fy > 0.72) continue;
-
-        const relX = (p.nx - eyeCenter[0]) * aspect * axis.ux + (p.ny - eyeCenter[1]) * axis.uy;
-        if (Math.abs(relX) > eyeHalfW * 0.78) continue;
-
-        const maxC = Math.max(p.r, p.g, p.b);
-        const minC = Math.min(p.r, p.g, p.b);
-        const sat = maxC > 0 ? (maxC - minC) / maxC : 0;
-        const redness = p.r - (p.g + p.b) * 0.5;
-        if (p.luma >= 45) {
-          fallbackCands.push({
-            score: p.luma - sat * 18,
-            rgb: [p.r, p.g, p.b],
-          });
-        }
-
-        // Rank brightest clean neutral sclera highest, rejecting upper-lid shadow, lash edge and caruncle red
-        if (p.luma < 92 || sat > 0.3 || redness > 24) continue;
-        const item: ScleraCand = {
-          score: p.luma - redness * 1.25 - sat * 48,
-          rgb: [p.r, p.g, p.b],
-        };
-        allCands.push(item);
-        if (relX < -refinedIrisRad * 0.14) negCands.push(item);
-        else if (relX > refinedIrisRad * 0.14) posCands.push(item);
-      }
-
+      type ScleraCand = { score: number; rgb: [number, number, number]; relX: number };
       const summarize = (list: ScleraCand[], fallbackColor: [number, number, number]) => {
         if (list.length === 0) return fallbackColor;
         const sorted = [...list].sort((a, b) => a.score - b.score);
-        // Clean upper-bright percentile (64%-92%) picks pure sclera without shadow bleed or highlight clipping
-        const sIdx = Math.min(sorted.length - 1, Math.floor(sorted.length * 0.64));
-        const eIdx = Math.min(sorted.length, Math.max(sIdx + 1, Math.floor(sorted.length * 0.92)));
+        // Take middle neutral sclera band (35%-75%) to preserve exact portrait luminance without washing out
+        const sIdx = Math.min(sorted.length - 1, Math.floor(sorted.length * 0.35));
+        const eIdx = Math.min(sorted.length, Math.max(sIdx + 1, Math.floor(sorted.length * 0.75)));
         let sr = 0;
         let sg = 0;
         let sb = 0;
@@ -563,31 +618,166 @@ function analyzePhotoFeatures(
         ];
       };
 
-      const sourcePool = allCands.length >= 4 ? allCands : fallbackCands;
-      const mid = summarize(sourcePool, [224, 220, 216]);
-      const midLuma = 0.299 * mid[0] + 0.587 * mid[1] + 0.114 * mid[2];
-      const rawNeg = negCands.length >= 3 ? summarize(negCands, mid) : mid;
-      const rawPos = posCands.length >= 3 ? summarize(posCands, mid) : mid;
-      // Preserve authentic directional light/shadow difference between inner & outer sclera while blocking noisy extremes
-      const anchorSide = (side: [number, number, number]): [number, number, number] => {
-        const sLuma = 0.299 * side[0] + 0.587 * side[1] + 0.114 * side[2];
-        const lift = sLuma > 1 ? Math.max(0.82, Math.min(1.08, (midLuma * 0.98) / sLuma)) : 1;
-        const clampedS =
-          Math.max(0.84 * midLuma, Math.min(1.08 * midLuma, sLuma)) / Math.max(1, sLuma);
-        const factor = sLuma < midLuma * 0.8 || sLuma > midLuma * 1.12 ? lift : clampedS;
-        const adj: [number, number, number] = [
-          Math.min(255, side[0] * factor),
-          Math.min(255, side[1] * factor),
-          Math.min(255, side[2] * factor),
-        ];
-        return [
-          Math.round(mid[0] * 0.25 + adj[0] * 0.75),
-          Math.round(mid[1] * 0.25 + adj[1] * 0.75),
-          Math.round(mid[2] * 0.25 + adj[2] * 0.75),
-        ];
+      // Preserve the portrait's real sclera brightness & tone (never bleach shaded eyes whitish), only calming abnormal caruncle redness
+      const cleanScleraNatural = (rgb: [number, number, number]): [number, number, number] => {
+        const rednessExcess = Math.max(0, rgb[0] - Math.max(rgb[1], rgb[2]) - 12);
+        if (rednessExcess <= 0) {
+          return [Math.round(rgb[0]), Math.round(rgb[1]), Math.round(rgb[2])];
+        }
+        const nr = Math.max(0, rgb[0] - rednessExcess * 0.35);
+        const ng = Math.min(255, rgb[1] + rednessExcess * 0.45);
+        const nb = Math.min(255, rgb[2] + rednessExcess * 0.42);
+        return [Math.round(nr), Math.round(ng), Math.round(nb)];
       };
-      const neg = anchorSide(rawNeg);
-      const pos = anchorSide(rawPos);
+
+      const sampleScleraFromRadius = (
+        cPupil: [number, number],
+        cRad: number,
+      ): {
+        mid: [number, number, number];
+        neg: [number, number, number];
+        pos: [number, number, number];
+      } => {
+        const negCands: ScleraCand[] = [];
+        const posCands: ScleraCand[] = [];
+        const allCands: ScleraCand[] = [];
+        const fallbackCands: ScleraCand[] = [];
+
+        for (const p of eyePixels) {
+          const dPupil = Math.hypot((p.nx - cPupil[0]) * aspect, p.ny - cPupil[1]);
+          if (dPupil < cRad * 1.18) continue;
+          if (p.fy < 0.36 || p.fy > 0.72) continue;
+          if (Math.abs(p.relX) > eyeHalfW * 0.72) continue;
+
+          const maxC = Math.max(p.r, p.g, p.b);
+          const minC = Math.min(p.r, p.g, p.b);
+          const sat = maxC > 0 ? (maxC - minC) / maxC : 0;
+          const redness = p.r - (p.g + p.b) * 0.5;
+          if (p.luma >= 64 && redness <= 22) {
+            fallbackCands.push({
+              score: p.luma - sat * 45 - Math.max(0, redness) * 1.4,
+              rgb: [p.r, p.g, p.b],
+              relX: p.relX,
+            });
+          }
+
+          if (p.luma < 86 || sat > 0.24 || redness > 16) continue;
+          const item: ScleraCand = {
+            score: p.luma - Math.max(0, redness) * 1.6 - sat * 60,
+            rgb: [p.r, p.g, p.b],
+            relX: p.relX,
+          };
+          allCands.push(item);
+          if (p.relX < -cRad * 0.25) negCands.push(item);
+          else if (p.relX > cRad * 0.25) posCands.push(item);
+        }
+
+        const sourcePool = allCands.length >= 4 ? allCands : fallbackCands;
+        const mid = cleanScleraNatural(summarize(sourcePool, [214, 210, 206]));
+        const midLuma = 0.299 * mid[0] + 0.587 * mid[1] + 0.114 * mid[2];
+        const rawNeg = negCands.length >= 3 ? cleanScleraNatural(summarize(negCands, mid)) : mid;
+        const rawPos = posCands.length >= 3 ? cleanScleraNatural(summarize(posCands, mid)) : mid;
+
+        // Enforce gentle homogeneity across left/right sclera halves without jarring jumps
+        const anchorSide = (side: [number, number, number]): [number, number, number] => {
+          const sLuma = 0.299 * side[0] + 0.587 * side[1] + 0.114 * side[2];
+          const lift = sLuma > 1 ? Math.max(0.95, Math.min(1.05, midLuma / sLuma)) : 1;
+          const adj: [number, number, number] = [
+            Math.min(252, side[0] * lift),
+            Math.min(252, side[1] * lift),
+            Math.min(252, side[2] * lift),
+          ];
+          return [
+            Math.round(mid[0] * 0.55 + adj[0] * 0.45),
+            Math.round(mid[1] * 0.55 + adj[1] * 0.45),
+            Math.round(mid[2] * 0.55 + adj[2] * 0.45),
+          ];
+        };
+
+        return { mid, neg: anchorSide(rawNeg), pos: anchorSide(rawPos) };
+      };
+
+      // Iterative self-verification loop: simulate cornea removal & inspect remaining sclera for any dark crescent or abrupt color jump
+      let scleraEst = sampleScleraFromRadius(refinedPupil, refinedIrisRad);
+      const maxCorneaRad = Math.min(eyeHalfW * 0.76, irisRad * 1.65);
+      for (let iter = 0; iter < 9 && eyePixels.length >= 24; iter++) {
+        const bgLumaMid =
+          0.299 * scleraEst.mid[0] + 0.587 * scleraEst.mid[1] + 0.114 * scleraEst.mid[2];
+        const bgLumaNeg =
+          0.299 * scleraEst.neg[0] + 0.587 * scleraEst.neg[1] + 0.114 * scleraEst.neg[2];
+        const bgLumaPos =
+          0.299 * scleraEst.pos[0] + 0.587 * scleraEst.pos[1] + 0.114 * scleraEst.pos[2];
+
+        let remWeight = 0;
+        let remDx = 0;
+        let remDy = 0;
+        let maxRemR = refinedIrisRad;
+        let remCount = 0;
+
+        for (const p of eyePixels) {
+          // Inspect visible sclera band around & outside the erased cornea disk
+          if (p.fy < 0.34 || p.fy > 0.76) continue;
+          if (Math.abs(p.relX) > eyeHalfW * 0.76) continue;
+          const dPupil = Math.hypot((p.nx - refinedPupil[0]) * aspect, p.ny - refinedPupil[1]);
+          if (
+            dPupil <= refinedIrisRad * 1.02 ||
+            dPupil > Math.max(maxCorneaRad * 1.18, irisRad * 1.65)
+          ) {
+            continue;
+          }
+
+          // Ignore pink inner caruncle pixels near edge
+          const redness = p.r - (p.g + p.b) * 0.5;
+          if (redness > 18 && Math.abs(p.relX) > eyeHalfW * 0.52) continue;
+
+          const sideT = Math.max(
+            0,
+            Math.min(1, (p.relX / Math.max(0.005, eyeHalfW * 0.8)) * 0.5 + 0.5),
+          );
+          const expectedR = scleraEst.neg[0] * (1 - sideT) + scleraEst.pos[0] * sideT;
+          const expectedG = scleraEst.neg[1] * (1 - sideT) + scleraEst.pos[1] * sideT;
+          const expectedB = scleraEst.neg[2] * (1 - sideT) + scleraEst.pos[2] * sideT;
+          const expectedLuma =
+            p.relX < 0 ? (bgLumaNeg + bgLumaMid) * 0.5 : (bgLumaPos + bgLumaMid) * 0.5;
+
+          const lumaDrop = expectedLuma - p.luma;
+          const colJump = Math.hypot(p.r - expectedR, p.g - expectedG, p.b - expectedB);
+
+          // Dark iris/limbal crescent still sitting in vacated sclera -> refine until completely gone
+          if (lumaDrop > 21 || (colJump > 34 && lumaDrop > 10)) {
+            remCount++;
+            const w = lumaDrop + colJump * 0.5;
+            remWeight += w;
+            remDx += (p.nx - refinedPupil[0]) * aspect * w;
+            remDy += (p.ny - refinedPupil[1]) * w;
+            if (dPupil > maxRemR) maxRemR = dPupil;
+          }
+        }
+
+        if (remCount <= 1) {
+          break;
+        }
+
+        const avgDx = remDx / Math.max(1e-5, remWeight);
+        const avgDy = remDy / Math.max(1e-5, remWeight);
+        const candPx = refinedPupil[0] + (avgDx * 0.35) / aspect;
+        const candPy = refinedPupil[1] + avgDy * 0.35;
+        const totalShift = Math.hypot((candPx - pupil[0]) * aspect, candPy - pupil[1]);
+        const maxShiftAllowed = irisRad * 0.45;
+        if (totalShift <= maxShiftAllowed) {
+          refinedPupil = [candPx, candPy];
+        } else if (totalShift > 1e-6) {
+          const s = maxShiftAllowed / totalShift;
+          refinedPupil = [pupil[0] + (candPx - pupil[0]) * s, pupil[1] + (candPy - pupil[1]) * s];
+        }
+        refinedIrisRad = Math.min(
+          maxCorneaRad,
+          Math.max(refinedIrisRad * 1.05, Math.min(maxCorneaRad, maxRemR * 1.03)),
+        );
+        scleraEst = sampleScleraFromRadius(refinedPupil, refinedIrisRad);
+      }
+
+      const { mid, neg, pos } = scleraEst;
       return { mid, neg, pos, refinedPupil, refinedIrisRad };
     };
 
@@ -601,6 +791,7 @@ function analyzePhotoFeatures(
       axis: Axis2D,
       curve: EyeCurveProfile,
       irisRad: number,
+      outerSign: -1 | 1,
     ): {
       mid: [number, number, number];
       neg: [number, number, number];
@@ -617,8 +808,8 @@ function analyzePhotoFeatures(
       const halfW = curve.halfW;
       const scaleY = curve.scaleY;
 
-      // Bounding region anchored cleanly to left/right commissures with vertical margin for upper tarsal skin & lower lid
-      const padNormX = (halfW * 1.25) / aspect;
+      // Bounding region anchored beyond outer commissure so extended lash/eyeliner wings are detected cleanly
+      const padNormX = (halfW * 1.65) / aspect;
       const padNormYTop = scaleY * 2.4;
       const padNormYBot = scaleY * 1.8;
       const rx0 = Math.max(0, eyeCenter[0] - padNormX);
@@ -628,7 +819,7 @@ function analyzePhotoFeatures(
       const rw = Math.max(0.012, rx1 - rx0);
       const rh = Math.max(0.012, ry1 - ry0);
 
-      const CW = 96;
+      const CW = 112;
       const CH = 72;
       const cc = document.createElement("canvas");
       cc.width = CW;
@@ -777,6 +968,31 @@ function analyzePhotoFeatures(
         return [Math.round(sr / cnt), Math.round(sg / cnt), Math.round(sb / cnt)];
       };
 
+      // Scan past the outer commissure (outerSign * 0.96 .. 1.44) to detect the darkest outer lash/eyeliner wing + default margin
+      let outerReach = 1.24;
+      let outerWingY = 0;
+      let bestWingScore = 12;
+      for (let ext = 1.02; ext <= 1.44; ext += 0.08) {
+        const exProbe = outerSign * ext;
+        let colDarkScore = 0;
+        let colBestY = 0;
+        for (let ey = -0.34; ey <= 0.24; ey += 0.06) {
+          const sp = sampleEyCoord(exProbe, ey);
+          const dark = Math.max(0, skinRefLuma - sp.luma);
+          if (dark > colDarkScore) {
+            colDarkScore = dark;
+            colBestY = ey;
+          }
+        }
+        if (colDarkScore > Math.max(22, skinRefLuma * 0.24)) {
+          outerReach = Math.max(outerReach, Math.min(1.46, ext + 0.1));
+          if (colDarkScore > bestWingScore) {
+            bestWingScore = colDarkScore;
+            outerWingY = Math.max(-0.18, Math.min(0.14, colBestY));
+          }
+        }
+      }
+
       return {
         ...baseRes,
         refinedCurve: {
@@ -785,6 +1001,8 @@ function analyzePhotoFeatures(
           lower: [lowerArch[0], lowerArch[2], lowerArch[5], lowerArch[7]],
           upperArch,
           lowerArch,
+          outerReach,
+          outerWingY,
         },
         upperLidRgb: medianRgb(upperSkinCands),
         lowerLidRgb: medianRgb(lowerSkinCands),
@@ -801,6 +1019,7 @@ function analyzePhotoFeatures(
       rightEyeAxis,
       rightEyeCurve,
       rightIrisRadius,
+      -1,
     );
     const lSclera = refineEyeAndSample(
       LEFT_EYE_LOOP,
@@ -809,6 +1028,7 @@ function analyzePhotoFeatures(
       leftEyeAxis,
       leftEyeCurve,
       leftIrisRadius,
+      1,
     );
     const avgLid = (
       a: [number, number, number] | null,
@@ -1221,10 +1441,10 @@ function buildFacePts(
     return Math.hypot((pb[0] - pa[0]) * aspect, pb[1] - pa[1]);
   };
 
-  const mouthW = Math.max(0.05, distA(61, 291));
+  const mouthW = Math.max(0.04, distA(61, 291));
   const restGap = distA(13, 14);
-  const mouthH = Math.max(0.014, distA(0, 17));
-  const restMouthRatio = stylized ? 0 : restGap / mouthW;
+  const mouthH = Math.max(0.012, distA(0, 17));
+  const restMouthRatio = restGap / mouthW;
 
   const dLeft = distA(1, 234);
   const dRight = distA(1, 454);
@@ -1350,14 +1570,190 @@ function buildFacePts(
     chinPt[0],
     Math.min(0.96, chinPt[1] + faceH * 0.34),
   ];
-  const rightShoulder: [number, number] = extras?.kp?.rightShoulder ?? [
-    Math.max(0.04, neckBase[0] - (faceW * 0.92) / aspect),
-    Math.min(0.98, neckBase[1] + faceH * 0.22),
-  ];
-  const leftShoulder: [number, number] = extras?.kp?.leftShoulder ?? [
-    Math.min(0.96, neckBase[0] + (faceW * 0.92) / aspect),
-    Math.min(0.98, neckBase[1] + faceH * 0.22),
-  ];
+
+  // Detect laryngeal prominence (Adam's apple) along exposed neck midline below chin
+  const detectAdamApple = (): [number, number] => {
+    const midX = chinPt[0] * 0.42 + neckBase[0] * 0.58;
+    const fallbackY =
+      chinPt[1] + Math.min(faceH * 0.24, Math.max(faceH * 0.14, (neckBase[1] - chinPt[1]) * 0.54));
+    try {
+      const imgW = img.naturalWidth || img.width || 512;
+      const imgH = img.naturalHeight || img.height || 512;
+      const bandW = Math.max(0.024, (faceW * 0.14) / aspect);
+      const yTop = Math.min(0.94, chinPt[1] + faceH * 0.08);
+      const yBot = Math.min(
+        0.98,
+        Math.max(yTop + 0.04, Math.min(neckBase[1], chinPt[1] + faceH * 0.42)),
+      );
+      const x0 = Math.max(0, midX - bandW);
+      const x1 = Math.min(1, midX + bandW);
+      const rw = Math.max(0.02, x1 - x0);
+      const rh = Math.max(0.02, yBot - yTop);
+      const NW = 32;
+      const NH = 48;
+      const nc = document.createElement("canvas");
+      nc.width = NW;
+      nc.height = NH;
+      const nctx = nc.getContext("2d", { willReadFrequently: true });
+      if (!nctx) return [midX, fallbackY];
+      nctx.drawImage(img, x0 * imgW, yTop * imgH, rw * imgW, rh * imgH, 0, 0, NW, NH);
+      const nd = nctx.getImageData(0, 0, NW, NH).data;
+      const skin = analysis.colors.skin;
+      const rowStats: Array<{ midLuma: number; flankLuma: number; skinOk: boolean }> = [];
+      for (let py = 0; py < NH; py++) {
+        let midSum = 0;
+        let midN = 0;
+        let flankSum = 0;
+        let flankN = 0;
+        let skinDiffSum = 0;
+        for (let px = 0; px < NW; px++) {
+          const o = (py * NW + px) * 4;
+          const r = nd[o]!;
+          const g = nd[o + 1]!;
+          const b = nd[o + 2]!;
+          const lum = 0.299 * r + 0.587 * g + 0.114 * b;
+          const fx = (px + 0.5) / NW;
+          if (fx >= 0.36 && fx <= 0.64) {
+            midSum += lum;
+            midN++;
+            skinDiffSum += Math.abs(r - skin[0]) + Math.abs(g - skin[1]) + Math.abs(b - skin[2]);
+          } else if (fx <= 0.22 || fx >= 0.78) {
+            flankSum += lum;
+            flankN++;
+          }
+        }
+        const avgDiff = midN > 0 ? skinDiffSum / midN : 999;
+        rowStats.push({
+          midLuma: midN > 0 ? midSum / midN : 0,
+          flankLuma: flankN > 0 ? flankSum / flankN : 0,
+          skinOk: avgDiff < 135,
+        });
+      }
+      let bestPy = -1;
+      let bestScore = 3.5;
+      for (let py = 5; py < NH - 6; py++) {
+        if (!rowStats[py]!.skinOk || !rowStats[py + 3]!.skinOk) continue;
+        const ridge = rowStats[py]!.midLuma - rowStats[py]!.flankLuma;
+        const shadowDrop = rowStats[py]!.midLuma - rowStats[py + 4]!.midLuma;
+        const centerPrior = 1 - Math.abs(py / NH - 0.48) * 0.55;
+        const score = (Math.max(0, ridge) * 0.75 + Math.max(0, shadowDrop) * 1.15) * centerPrior;
+        if (score > bestScore) {
+          bestScore = score;
+          bestPy = py;
+        }
+      }
+      if (bestPy >= 0) {
+        return [midX, yTop + ((bestPy + 0.5) / NH) * rh];
+      }
+    } catch {
+      /* fallback below */
+    }
+    return [midX, fallbackY];
+  };
+  const adamApple = detectAdamApple();
+
+  // 5-point anatomical structure: lowerNeck + rightTrapezius + leftTrapezius + rightShoulder + leftShoulder
+  const detect5PointNeckShoulderYoke = (): {
+    lowerNeck: [number, number];
+    rightTrapezius: [number, number];
+    leftTrapezius: [number, number];
+    rightShoulder: [number, number];
+    leftShoulder: [number, number];
+  } => {
+    const defLowerY = Math.min(0.95, Math.max(neckBase[1], chinPt[1] + faceH * 0.34));
+    const defLowerNeck: [number, number] = [neckBase[0], defLowerY];
+    const defRightTrap: [number, number] = [
+      Math.max(0.05, defLowerNeck[0] - (faceW * 0.56) / aspect),
+      Math.min(0.96, defLowerY + faceH * 0.11),
+    ];
+    const defLeftTrap: [number, number] = [
+      Math.min(0.95, defLowerNeck[0] + (faceW * 0.56) / aspect),
+      Math.min(0.96, defLowerY + faceH * 0.11),
+    ];
+    const defRightShoulder: [number, number] = extras?.kp?.rightShoulder ?? [
+      Math.max(0.04, defLowerNeck[0] - (faceW * 1.02) / aspect),
+      Math.min(0.98, defLowerY + faceH * 0.24),
+    ];
+    const defLeftShoulder: [number, number] = extras?.kp?.leftShoulder ?? [
+      Math.min(0.96, defLowerNeck[0] + (faceW * 1.02) / aspect),
+      Math.min(0.98, defLowerY + faceH * 0.24),
+    ];
+
+    const segMask = extras?.segMask;
+    const sw = extras?.segWidth;
+    const sh = extras?.segHeight;
+    if (!segMask || !sw || !sh) {
+      return {
+        lowerNeck: defLowerNeck,
+        rightTrapezius: defRightTrap,
+        leftTrapezius: defLeftTrap,
+        rightShoulder: defRightShoulder,
+        leftShoulder: defLeftShoulder,
+      };
+    }
+
+    const rowSpan = (ny: number): { leftX: number; rightX: number; width: number } | null => {
+      const sy = Math.max(0, Math.min(sh - 1, Math.round(ny * (sh - 1))));
+      const midPx = Math.max(0, Math.min(sw - 1, Math.round(neckBase[0] * (sw - 1))));
+      let lx = midPx;
+      let rx = midPx;
+      while (lx > 0 && (segMask[sy * sw + (lx - 1)] ?? 0) > 0.45) lx--;
+      while (rx < sw - 1 && (segMask[sy * sw + (rx + 1)] ?? 0) > 0.45) rx++;
+      if (rx - lx < sw * 0.04) return null;
+      return {
+        leftX: lx / (sw - 1),
+        rightX: rx / (sw - 1),
+        width: ((rx - lx) / (sw - 1)) * aspect,
+      };
+    };
+
+    // Locate inferior neck base just before silhouette width flares into the trapezius slope
+    let bestNeckY = defLowerY;
+    let minNeckWidth = 999;
+    const scanStart = Math.min(0.92, chinPt[1] + faceH * 0.14);
+    const scanEnd = Math.min(0.95, chinPt[1] + faceH * 0.42);
+    for (let ny = scanStart; ny <= scanEnd; ny += 0.015) {
+      const sp = rowSpan(ny);
+      if (sp && sp.width < minNeckWidth) {
+        minNeckWidth = sp.width;
+        bestNeckY = ny;
+      }
+    }
+    const baseSpan = rowSpan(bestNeckY);
+    const lowerNeckX = baseSpan ? (baseSpan.leftX + baseSpan.rightX) * 0.5 : defLowerNeck[0];
+    const lowerNeckY = Math.min(0.95, bestNeckY + faceH * 0.06);
+    const lowerNeck: [number, number] = [lowerNeckX, lowerNeckY];
+
+    // Trapezius outer edges sit between lowerNeck and shoulders along the upper silhouette flare
+    const trapY = Math.min(0.96, lowerNeckY + faceH * 0.11);
+    const trapSpan = rowSpan(trapY);
+    const rightTrapezius: [number, number] =
+      trapSpan && trapSpan.leftX < lowerNeckX - (faceW * 0.28) / aspect
+        ? [trapSpan.leftX, trapY]
+        : defRightTrap;
+    const leftTrapezius: [number, number] =
+      trapSpan && trapSpan.rightX > lowerNeckX + (faceW * 0.28) / aspect
+        ? [trapSpan.rightX, trapY]
+        : defLeftTrap;
+
+    const shY = Math.min(0.98, lowerNeckY + faceH * 0.25);
+    const shSpan = rowSpan(shY);
+    const rightShoulder: [number, number] =
+      extras?.kp?.rightShoulder ??
+      (shSpan && shSpan.leftX < rightTrapezius[0] - (faceW * 0.08) / aspect
+        ? [shSpan.leftX, shY]
+        : defRightShoulder);
+    const leftShoulder: [number, number] =
+      extras?.kp?.leftShoulder ??
+      (shSpan && shSpan.rightX > leftTrapezius[0] + (faceW * 0.08) / aspect
+        ? [shSpan.rightX, shY]
+        : defLeftShoulder);
+
+    return { lowerNeck, rightTrapezius, leftTrapezius, rightShoulder, leftShoulder };
+  };
+
+  const { lowerNeck, rightTrapezius, leftTrapezius, rightShoulder, leftShoulder } =
+    detect5PointNeckShoulderYoke();
 
   const hands: HandKeypoints[] = extras?.hands ?? extras?.kp?.hands ?? [];
   const analysis = analyzePhotoFeatures(
@@ -1388,6 +1784,21 @@ function buildFacePts(
   };
   const restMouthTopY = Math.min(-0.004, projMouthY(13));
   const restMouthBotY = Math.max(0.004, projMouthY(14));
+
+  const rCheekAnchor = landmarks[50] ?? landmarks[118] ?? landmarks[234]!;
+  const rCheekTop = landmarks[117] ?? rCheekAnchor;
+  const rightCheekPos: [number, number] = [
+    (rCheekAnchor[0] + rCheekTop[0]) * 0.5,
+    (rCheekAnchor[1] + rCheekTop[1]) * 0.5,
+  ];
+  const lCheekAnchor = landmarks[280] ?? landmarks[347] ?? landmarks[454]!;
+  const lCheekTop = landmarks[346] ?? lCheekAnchor;
+  const leftCheekPos: [number, number] = [
+    (lCheekAnchor[0] + lCheekTop[0]) * 0.5,
+    (lCheekAnchor[1] + lCheekTop[1]) * 0.5,
+  ];
+  const rightInnerCanthus: [number, number] = [landmarks[133]![0], landmarks[133]![1]];
+  const leftInnerCanthus: [number, number] = [landmarks[362]![0], landmarks[362]![1]];
 
   return {
     landmarks,
@@ -1428,8 +1839,16 @@ function buildFacePts(
     hairLeft,
     hairRight,
     neckBase,
+    lowerNeck,
+    adamApple,
+    rightTrapezius,
+    leftTrapezius,
     rightShoulder,
     leftShoulder,
+    rightCheekPos,
+    leftCheekPos,
+    rightInnerCanthus,
+    leftInnerCanthus,
     hands,
     colors: analysis.colors,
     segMask: extras?.segMask,
@@ -1441,9 +1860,11 @@ function buildFacePts(
 export async function detectFace(
   img: HTMLImageElement,
   key: string,
-  opts?: { localOnly?: boolean },
+  opts?: { localOnly?: boolean; styleHint?: "auto" | "human" | "anime" },
 ): Promise<FacePts | null> {
-  if (cache.has(key)) return cache.get(key)!;
+  const styleTag = opts?.styleHint && opts.styleHint !== "auto" ? `:${opts.styleHint}` : "";
+  const cacheKey = `${key}${styleTag}`;
+  if (cache.has(cacheKey)) return cache.get(cacheKey)!;
   try {
     installTfliteConsoleFilter();
     const { FaceLandmarker } = await import("@mediapipe/tasks-vision");
@@ -1484,7 +1905,7 @@ export async function detectFace(
       rawLandmarks && rawLandmarks.length >= 468
         ? rawLandmarks.map((pt) => [pt.x, pt.y, pt.z ?? 0])
         : null;
-    let stylized = false;
+    let stylized = opts?.styleHint === "anime";
     let visionKp: FaceKeypoints | undefined;
 
     // Detect hands on real photos via MediaPipe HandLandmarker
@@ -1698,28 +2119,34 @@ export async function detectFace(
             for (let x = 2; x < segWidth - 2; x++) {
               const idx = y * segWidth + x;
               const p = usableSegMask[idx]!;
-              if (p <= 0.08 || p >= 0.92) continue;
+              if (p <= 0.04 || p >= 0.96) continue;
               const [r, g, b] = sampleDetRgb(x, y);
               let fgW = 0;
               let fgSim = 0;
               let bgW = 0;
               let bgSim = 0;
               for (const [dx, dy] of [
-                [-3, 0],
-                [3, 0],
-                [0, -3],
-                [0, 3],
-                [-2, -2],
-                [2, 2],
+                [-1, 0],
+                [1, 0],
+                [0, -1],
+                [0, 1],
+                [-2, 0],
+                [2, 0],
+                [0, -2],
+                [0, 2],
+                [-1, -1],
+                [1, 1],
+                [-2, 2],
+                [2, -2],
               ] as const) {
                 const np = usableSegMask[(y + dy) * segWidth + (x + dx)]!;
                 const [nr, ng, nb] = sampleDetRgb(x + dx, y + dy);
                 const diff = Math.abs(r - nr) + Math.abs(g - ng) + Math.abs(b - nb);
-                const sim = Math.exp(-diff / 48);
-                if (np > 0.8) {
+                const sim = Math.exp(-diff / 36);
+                if (np > 0.72) {
                   fgW += 1;
                   fgSim += sim;
-                } else if (np < 0.2) {
+                } else if (np < 0.24) {
                   bgW += 1;
                   bgSim += sim;
                 }
@@ -1728,7 +2155,7 @@ export async function detectFace(
                 const fAvg = fgSim / fgW;
                 const bAvg = bgSim / bgW;
                 const guide = fAvg / Math.max(1e-4, fAvg + bAvg);
-                snapped[idx] = Math.max(0, Math.min(1, p * 0.45 + guide * 0.55));
+                snapped[idx] = Math.max(0, Math.min(1, p * 0.35 + guide * 0.65));
               }
             }
           }
@@ -1737,6 +2164,8 @@ export async function detectFace(
       }
     }
 
+    stylized = false;
+
     const out = buildFacePts(img, landmarks, faceTris, ovalLoop, aspect, stylized, {
       kp: visionKp,
       hands: finalHands,
@@ -1744,7 +2173,7 @@ export async function detectFace(
       segWidth: usableSegMask ? segWidth : undefined,
       segHeight: usableSegMask ? segHeight : undefined,
     });
-    cache.set(key, out);
+    cache.set(cacheKey, out);
     return out;
   } catch (e) {
     console.warn("face detect failed", e);

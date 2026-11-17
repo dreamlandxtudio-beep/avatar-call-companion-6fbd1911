@@ -739,37 +739,6 @@ function ProfilePage() {
                   {p.blurredBackground ? "Activado" : "Desactivado"}
                 </Button>
               </div>
-              <div>
-                <p className="mb-2 font-semibold text-foreground">
-                  Modelo de animación facial (Humano vs Anime)
-                </p>
-                <div className="grid grid-cols-3 gap-2">
-                  {(
-                    [
-                      ["auto", "Automático"],
-                      ["human", "Humano realista"],
-                      ["anime", "Anime / 2D"],
-                    ] as const
-                  ).map(([val, label]) => (
-                    <button
-                      key={val}
-                      type="button"
-                      onClick={() => setProfile({ animationStyle: val })}
-                      className={`min-h-[40px] rounded-lg border px-2.5 py-2 text-center text-xs font-bold transition-colors ${
-                        (p.animationStyle ?? "auto") === val
-                          ? "border-primary bg-primary/15 text-foreground"
-                          : "border-border bg-background/60 text-muted-foreground hover:text-foreground"
-                      }`}
-                    >
-                      {label}
-                    </button>
-                  ))}
-                </div>
-                <p className="mt-1.5 text-[11px] text-muted-foreground">
-                  El modo Humano prioriza realismo ocular, párpados arqueados y dientes reales;
-                  Anime adapta ojos grandes y boca más expresiva en ilustraciones.
-                </p>
-              </div>
               <div className="grid grid-cols-2 gap-2">
                 <Button
                   variant="ghost"

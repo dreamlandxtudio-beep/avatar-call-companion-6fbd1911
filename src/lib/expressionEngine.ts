@@ -26,6 +26,9 @@ export type ExpressionFrame = {
   smileR: number;
   smileL: number;
   mouthSkewX: number;
+  upperLipLift: number;
+  lowerLipDrop: number;
+  lipBite: number;
   cheekLift: number;
   innerBrowY: number;
   innerBrowPinch: number;
@@ -33,12 +36,17 @@ export type ExpressionFrame = {
   browAsym: number;
   eyeSquint: number;
   eyeWide: number;
+  eyeRoll: number;
   noseFlare: number;
   gazeX: number;
   gazeY: number;
   headYaw: number;
   headPitch: number;
   headRoll: number;
+  neckYaw: number;
+  neckPitch: number;
+  neckRoll: number;
+  torsoYaw: number;
   headTx: number;
   headTy: number;
   torsoBreath: number;
@@ -57,7 +65,7 @@ export type ExpressionFrame = {
   pupilDilate: number;
   sweatAmount: number;
   blushAmount: number;
-  swallow: number;
+  swallowAmount: number;
 };
 
 export type ExpressionPose =
@@ -68,7 +76,6 @@ export type ExpressionPose =
   | "browInterest"
   | "thoughtfulFurrow"
   | "gentleSmirk"
-  | "charismaticAsym"
   | "softPonder";
 
 export type ExpressionEngineState = {
@@ -99,10 +106,6 @@ export type ExpressionEngineState = {
   nextSmirkAt: number;
   smirkUntil: number;
   smirkSide: 1 | -1;
-  nextSwallowAt: number;
-  swallowStartAt: number;
-  swallowUntil: number;
-  swallow: number;
   poseMode: ExpressionPose;
   poseUntil: number;
   nextPoseAt: number;
@@ -123,17 +126,24 @@ export type ExpressionEngineState = {
   smileR: number;
   smileL: number;
   mouthSkewX: number;
+  upperLipLift: number;
+  lowerLipDrop: number;
+  lipBite: number;
   cheekLift: number;
   innerBrowY: number;
   innerBrowPinch: number;
   outerBrowY: number;
-  browAsym: number;
   eyeSquint: number;
   eyeWide: number;
+  eyeRoll: number;
   noseFlare: number;
   headYaw: number;
   headPitch: number;
   headRoll: number;
+  neckYaw: number;
+  neckPitch: number;
+  neckRoll: number;
+  torsoYaw: number;
   torsoSwayX: number;
   shoulderTilt: number;
   shoulderShrug: number;
@@ -149,6 +159,10 @@ export type ExpressionEngineState = {
   blushAmount: number;
   nextTongueAt: number;
   tongueUntil: number;
+  swallowStartAt: number;
+  swallowUntil: number;
+  nextSwallowEligibleAt: number;
+  swallowAmount: number;
   prevVisemeOpen: number;
   browBeat: number;
 };
@@ -156,18 +170,18 @@ export type ExpressionEngineState = {
 function pickExpressionPose(preferThink: boolean): ExpressionPose {
   const r = Math.random();
   if (preferThink) {
-    if (r < 0.44) return "thinkSide";
-    if (r < 0.6) return "softPonder";
-    if (r < 0.74) return "thoughtfulFurrow";
-    if (r < 0.86) return "charismaticAsym";
+    if (r < 0.52) return "thinkSide";
+    if (r < 0.68) return "softPonder";
+    if (r < 0.8) return "thoughtfulFurrow";
+    if (r < 0.9) return "curiousTilt";
     return "browInterest";
   }
-  if (r < 0.36) return "thinkSide";
-  if (r < 0.48) return "softPonder";
-  if (r < 0.6) return "curiousTilt";
-  if (r < 0.72) return "attentiveWarm";
-  if (r < 0.82) return "charismaticAsym";
-  if (r < 0.91) return "browInterest";
+  if (r < 0.44) return "thinkSide";
+  if (r < 0.56) return "softPonder";
+  if (r < 0.68) return "curiousTilt";
+  if (r < 0.78) return "attentiveWarm";
+  if (r < 0.87) return "browInterest";
+  if (r < 0.94) return "thoughtfulFurrow";
   return "gentleSmirk";
 }
 
@@ -200,10 +214,6 @@ export function createExpressionEngine(now = performance.now()): ExpressionEngin
     nextSmirkAt: now + 9800,
     smirkUntil: 0,
     smirkSide: 1,
-    nextSwallowAt: now + 9500 + Math.random() * 8500,
-    swallowStartAt: 0,
-    swallowUntil: 0,
-    swallow: 0,
     poseMode: "thinkSide",
     poseUntil: now + 2600,
     nextPoseAt: now + 4800,
@@ -224,17 +234,24 @@ export function createExpressionEngine(now = performance.now()): ExpressionEngin
     smileR: 0,
     smileL: 0,
     mouthSkewX: 0,
+    upperLipLift: 0,
+    lowerLipDrop: 0,
+    lipBite: 0,
     cheekLift: 0,
     innerBrowY: 0,
     innerBrowPinch: 0,
     outerBrowY: 0,
-    browAsym: 0,
     eyeSquint: 0,
     eyeWide: 0,
+    eyeRoll: 0,
     noseFlare: 0,
     headYaw: 0,
     headPitch: 0,
     headRoll: 0,
+    neckYaw: 0,
+    neckPitch: 0,
+    neckRoll: 0,
+    torsoYaw: 0,
     torsoSwayX: 0,
     shoulderTilt: 0,
     shoulderShrug: 0,
@@ -250,6 +267,10 @@ export function createExpressionEngine(now = performance.now()): ExpressionEngin
     blushAmount: 0,
     nextTongueAt: now + 28000 + Math.random() * 22000,
     tongueUntil: 0,
+    swallowStartAt: 0,
+    swallowUntil: 0,
+    nextSwallowEligibleAt: now + 9000,
+    swallowAmount: 0,
     prevVisemeOpen: 0,
     browBeat: 0,
   };
@@ -268,6 +289,7 @@ const SUPPRESS_POSITIVE_EMOTIONS = new Set<AvatarEmotion>([
   "sweating",
   "sick",
   "pain",
+  "eyeroll",
 ]);
 
 export function stepExpressionEngine(
@@ -292,10 +314,9 @@ export function stepExpressionEngine(
   const mScale = opts.reducedMotion ? 0.15 : 1.0;
 
   const { active, listening, emotion, visemes, userFace } = opts;
-  const isAnime = !!opts.animeStyle;
-  const mouthAmp = isAnime ? 1.2 : 1.0;
-  const wideAmp = isAnime ? 1.18 : 1.0;
-  const browAmp = isAnime ? 1.1 : 1.0;
+  const mouthAmp = 0.88;
+  const wideAmp = 0.94;
+  const browAmp = 1.0;
   const hasUserFace = !!userFace?.detected && now - userFace.updatedAt < 1000;
   const directMirror = !!opts.mirrorMode && hasUserFace;
   const observedSmile = directMirror ? 0 : stepObservedReaction(st.reaction, now, userFace);
@@ -325,16 +346,20 @@ export function stepExpressionEngine(
     st.poseDir = st.thinkDir;
     st.poseUntil = now + 1100;
     st.nextPoseAt = now + 2600 + Math.random() * 1800;
-    if (now >= st.swallowUntil + 4000) {
-      st.swallowStartAt = now;
-      st.swallowUntil = now + 880;
-      st.nextSwallowAt = now + 18000 + Math.random() * 12000;
+    st.swallowStartAt = 0;
+    st.swallowUntil = 0;
+  } else if (!active && st.wasActive) {
+    if (!listening) {
+      st.thinkUntil = now + 950;
+      st.poseMode = "thinkSide";
+      st.poseDir = Math.random() < 0.5 ? -1 : 1;
+      st.poseUntil = now + 2200;
     }
-  } else if (!active && st.wasActive && !listening) {
-    st.thinkUntil = now + 950;
-    st.poseMode = "thinkSide";
-    st.poseDir = Math.random() < 0.5 ? -1 : 1;
-    st.poseUntil = now + 2200;
+    if (!directMirror && now >= st.nextSwallowEligibleAt && Math.random() < 0.42) {
+      st.swallowStartAt = now + 850 + Math.random() * 1250;
+      st.swallowUntil = st.swallowStartAt + 720;
+      st.nextSwallowEligibleAt = now + 13000 + Math.random() * 9000;
+    }
   }
   if (listening && !st.wasListening) {
     st.listeningGlanceActive = false;
@@ -439,6 +464,18 @@ export function stepExpressionEngine(
         st.targetGazeY = (Math.random() - 0.5) * 0.03;
         st.nextSaccadeAt = now + 2200 + Math.random() * 1800;
       }
+    } else if (emotion === "eyeroll") {
+      st.targetGazeX = Math.sin(t * 2.2) * 0.22;
+      st.targetGazeY = 0.88;
+      st.nextSaccadeAt = now + 520 + Math.random() * 480;
+    } else if (emotion === "sarcastic") {
+      st.targetGazeX = (Math.random() < 0.5 ? -1 : 1) * 0.18;
+      st.targetGazeY = 0.36;
+      st.nextSaccadeAt = now + 780 + Math.random() * 620;
+    } else if (emotion === "intense") {
+      st.targetGazeX = (Math.random() - 0.5) * 0.08;
+      st.targetGazeY = 0.28 + Math.random() * 0.08;
+      st.nextSaccadeAt = now + 1400 + Math.random() * 1100;
     } else if (emotion === "nervous" || emotion === "sweating") {
       st.targetGazeX = (Math.random() - 0.5) * 0.85;
       st.targetGazeY = (Math.random() - 0.5) * 0.28 - 0.06;
@@ -479,7 +516,7 @@ export function stepExpressionEngine(
       st.targetGazeX = idleGlance
         ? st.poseDir * (0.46 + Math.random() * 0.34)
         : (Math.random() - 0.5) * 0.1;
-      st.targetGazeY = (Math.random() - 0.5) * 0.1;
+      st.targetGazeY = (Math.random() - 0.5) * 0.16;
       st.nextSaccadeAt = now + 950 + Math.random() * 1050;
     }
   }
@@ -498,9 +535,9 @@ export function stepExpressionEngine(
     ),
   );
   const targetGy = Math.max(
-    -0.68,
+    -0.82,
     Math.min(
-      0.68,
+      0.95,
       (directMirror ? 0 : winkPreparing ? 0 : st.targetGazeY + microDriftY) + mirrorGazeY,
     ),
   );
@@ -565,38 +602,10 @@ export function stepExpressionEngine(
     st.nextSmirkAt = now + 7500 + Math.random() * 7500;
   }
   let smirkAmount = 0;
-  if (
-    !directMirror &&
-    (now < st.smirkUntil || activePose === "gentleSmirk" || activePose === "charismaticAsym") &&
-    !isSolemnOrTense
-  ) {
-    const su = now < st.smirkUntil ? 1 - (st.smirkUntil - now) / 1350 : 0.65;
-    smirkAmount =
-      Math.sin(Math.min(1, Math.max(0, su)) * Math.PI) *
-      (activePose === "charismaticAsym" ? 0.32 : 0.22) *
-      mScale;
+  if (!directMirror && (now < st.smirkUntil || activePose === "gentleSmirk") && !isSolemnOrTense) {
+    const su = now < st.smirkUntil ? 1 - (st.smirkUntil - now) / 1350 : 0.5;
+    smirkAmount = Math.sin(Math.min(1, Math.max(0, su)) * Math.PI) * 0.2 * mScale;
   }
-
-  // Periodic quiet swallowing reflex (triggered pre-speech, nervously, or naturally every ~18-30s)
-  if (
-    !directMirror &&
-    !opts.reducedMotion &&
-    now >= st.nextSwallowAt &&
-    now >= st.swallowUntil &&
-    !active
-  ) {
-    st.swallowStartAt = now;
-    st.swallowUntil = now + 960;
-    const isNervous = emotion === "nervous" || emotion === "sweating" || emotion === "fear";
-    st.nextSwallowAt =
-      now + (isNervous ? 10500 + Math.random() * 6000 : 19000 + Math.random() * 12000);
-  }
-  let swallowProgress = 0;
-  if (!opts.reducedMotion && now >= st.swallowStartAt && now < st.swallowUntil) {
-    const span = Math.max(400, st.swallowUntil - st.swallowStartAt);
-    swallowProgress = Math.max(0, Math.min(1, (now - st.swallowStartAt) / span));
-  }
-  st.swallow = swallowProgress;
 
   const poseWarm = activePose === "attentiveWarm" && !isSolemnOrTense ? 0.2 * mScale : 0;
   const poseBrowLift =
@@ -626,21 +635,16 @@ export function stepExpressionEngine(
       ? 0.045 * mScale
       : 0;
 
-  const swallowLipPress =
-    swallowProgress > 0.12 && swallowProgress < 0.65
-      ? Math.sin(((swallowProgress - 0.12) / 0.53) * Math.PI) * 0.2
-      : 0;
-
   let emOpen = preSpeechOpen;
   let emWide = speechWarmth * 0.24;
   let emRound = activePose === "softPonder" ? 0.08 * mScale : 0;
-  let emPress = swallowLipPress;
+  let emPress = 0;
   let emSmile = ambientWarmth * 0.65 + speechWarmth * 0.75 + poseWarm;
   let emCheek = ambientWarmth * 0.55 + speechWarmth * 0.65 + poseWarm * 0.75;
-  let emInnerBrowY = ambientBrow * 0.85 + poseBrowLift - gestureFurrow * 0.42;
+  let emInnerBrowY = ambientBrow * 0.85 + poseBrowLift - gestureFurrow * 0.38;
   let emInnerBrowPinch = gestureFurrow;
   let emOuterBrowY = ambientBrow * 0.92 + poseBrowLift * 0.85 - gestureFurrow * 0.14;
-  let emExplicitBrowAsym = activePose === "charismaticAsym" && !isSolemnOrTense ? 0.44 * mScale : 0;
+  let emExplicitBrowAsym = 0;
   let emSquint = speechWarmth * 0.32 + poseSquint + winkStrength * 0.22;
   let emEyeWide = activePose === "browInterest" ? 0.12 * mScale : 0;
   let emLidDroop = 0;
@@ -650,7 +654,11 @@ export function stepExpressionEngine(
     : activePose === "softPonder"
       ? 0.08 * mScale
       : 0;
-  let emMouthSkewX = smirkAmount * st.smirkSide * 0.58;
+  let emMouthSkewX = smirkAmount * st.smirkSide * 0.55;
+  let emUpperLipLift = 0;
+  let emLowerLipDrop = 0;
+  let emLipBite = 0;
+  let emEyeRoll = 0;
   let smirkBias = smirkAmount * st.smirkSide;
   let emShoulderShrug = 0;
   let emTearAmount = 0;
@@ -664,80 +672,164 @@ export function stepExpressionEngine(
   switch (emotion) {
     case "happy": {
       emSmile =
-        (opts.hasVisibleTeeth ? 0.66 : 0.76) * eb + ambientWarmth * 0.2 + speechWarmth * 0.22;
-      emWide = 0.3 * eb;
-      emCheek = 0.76 * eb;
+        (opts.hasVisibleTeeth ? 0.68 : 0.78) * eb + ambientWarmth * 0.2 + speechWarmth * 0.25;
+      emWide = 0.28 * eb;
+      emUpperLipLift = 0.24 * eb;
+      emCheek = 0.72 * eb;
       emSquint = 0.42 * eb;
       emInnerBrowY = 0.22 * eb + ambientBrow * 0.25;
       emOuterBrowY = 0.24 * eb + ambientBrow * 0.25;
-      emNoseFlare = 0.16 * eb;
+      emNoseFlare = 0.14 * eb;
       emBlushAmount = 0.26 * eb;
       break;
     }
     case "euphoric": {
-      emSmile = (opts.hasVisibleTeeth ? 0.84 : 0.94) * eb;
+      emSmile = (opts.hasVisibleTeeth ? 0.82 : 0.92) * eb;
       emWide = 0.46 * eb;
-      emCheek = 0.88 * eb;
-      emSquint = 0.4 * eb;
-      emEyeWide = 0.26 * eb;
-      emInnerBrowY = 0.5 * eb;
-      emOuterBrowY = 0.54 * eb;
-      emOpen = Math.max(emOpen, active ? 0.34 : 0.38 * eb);
+      emUpperLipLift = 0.38 * eb;
+      emLowerLipDrop = 0.22 * eb;
+      emCheek = 0.86 * eb;
+      emSquint = 0.38 * eb;
+      emEyeWide = 0.28 * eb;
+      emInnerBrowY = 0.52 * eb;
+      emOuterBrowY = 0.56 * eb;
+      emOpen = Math.max(emOpen, active ? 0.24 : 0.28 * eb);
       emNoseFlare = 0.26 * eb;
-      emHeadTiltPitch = 0.12 * eb;
-      emPupilDilate = 0.28 * eb;
-      emBlushAmount = 0.38 * eb;
-      emShoulderShrug = 0.2 * eb;
+      emHeadTiltPitch = 0.14 * eb;
+      emPupilDilate = 0.3 * eb;
+      emBlushAmount = 0.4 * eb;
+      emShoulderShrug = 0.22 * eb;
       break;
     }
     case "laugh": {
-      // Sustained infectious multi-harmonic laughter pulses with broad cheek/AU9 lift & diaphragmatic cadence
-      const breathWave = Math.pow(0.5 + 0.5 * Math.sin(t * 10.6 + Math.sin(t * 2.4) * 0.8), 1.35);
-      emSmile = (opts.hasVisibleTeeth ? 0.88 : 0.96) * eb;
-      emWide = (0.48 + breathWave * 0.14) * eb;
-      emCheek = (0.9 + breathWave * 0.1) * eb;
-      emSquint = (0.62 + breathWave * 0.16) * eb;
+      // Smooth breathy laughter cadence (organic burst curve instead of robotic jitter)
+      const breathWave = 0.5 + 0.5 * Math.sin(t * 6.4 + Math.sin(t * 1.9) * 0.65);
+      emSmile = (opts.hasVisibleTeeth ? 0.84 : 0.92) * eb;
+      emWide = 0.42 * eb;
+      emUpperLipLift = 0.38 * eb;
+      emLowerLipDrop = 0.2 * eb;
+      emCheek = 0.86 * eb;
+      emSquint = 0.64 * eb;
       emInnerBrowY = 0.34 * eb;
       emOuterBrowY = 0.38 * eb;
-      emNoseFlare = (0.42 + breathWave * 0.12) * eb;
-      emEyeWater = 0.32 * eb;
-      emBlushAmount = 0.38 * eb;
-      emShoulderShrug = (0.1 + breathWave * 0.14) * eb;
+      emNoseFlare = 0.34 * eb;
+      emEyeWater = 0.28 * eb;
+      emBlushAmount = 0.36 * eb;
+      emShoulderShrug = (0.14 + breathWave * 0.22) * eb;
       emOpen = Math.max(
         emOpen,
-        active ? 0.4 + visemes.open * 0.38 : (0.36 + breathWave * 0.34) * eb,
+        active ? 0.26 + visemes.open * 0.24 : (0.32 + breathWave * 0.2) * eb,
       );
       break;
     }
     case "flirty": {
-      emSmile = 0.34 * eb;
-      smirkBias = 0.38 * eb;
-      emMouthSkewX = 0.18 * eb;
-      emCheek = 0.42 * eb;
+      emSmile = 0.36 * eb;
+      smirkBias = 0.42 * eb;
+      emMouthSkewX = 0.22 * eb;
+      emCheek = 0.44 * eb;
       emSquint = 0.28 * eb;
       emLidDroop = 0.24 * eb;
       emInnerBrowY = 0.18 * eb;
       emOuterBrowY = 0.24 * eb;
-      emExplicitBrowAsym = 0.26 * eb;
+      emExplicitBrowAsym = 0.28 * eb;
+      emPupilDilate = 0.24 * eb;
       emBlushAmount = 0.52 * eb;
       emHeadTiltPitch = -0.06 * eb;
       break;
     }
-    case "proud": {
-      emSmile = 0.36 * eb;
-      emWide = 0.14 * eb;
+    case "smirk": {
+      emSmile = 0.16 * eb;
+      smirkBias = 0.78 * eb;
+      emMouthSkewX = 0.48 * eb;
+      emUpperLipLift = 0.14 * eb;
       emCheek = 0.36 * eb;
+      emSquint = 0.24 * eb;
+      emInnerBrowY = 0.12 * eb;
+      emOuterBrowY = 0.18 * eb;
+      emExplicitBrowAsym = 0.34 * eb;
+      emHeadTiltPitch = -0.05 * eb;
+      break;
+    }
+    case "compassionate": {
+      emSmile = 0.32 * eb;
+      emCheek = 0.38 * eb;
+      emSquint = 0.22 * eb;
+      emInnerBrowY = 0.44 * eb;
+      emInnerBrowPinch = 0.24 * eb;
+      emOuterBrowY = -0.08 * eb;
+      emEyeWater = 0.34 * eb;
+      emPupilDilate = 0.26 * eb;
+      emBlushAmount = 0.22 * eb;
+      emHeadTiltPitch = -0.1 * eb;
+      break;
+    }
+    case "intense": {
+      emSmile = 0.1 * eb;
+      smirkBias = 0.18 * eb;
+      emPress = 0.18 * eb;
+      emInnerBrowY = -0.14 * eb;
+      emInnerBrowPinch = 0.32 * eb;
+      emOuterBrowY = 0.1 * eb;
+      emSquint = 0.24 * eb;
+      emLidDroop = 0.18 * eb;
+      emPupilDilate = 0.52 * eb;
+      emNoseFlare = 0.18 * eb;
+      emHeadTiltPitch = -0.32 * eb;
+      break;
+    }
+    case "bitingLip": {
+      emLipBite = 0.92 * eb;
+      emUpperLipLift = 0.18 * eb;
+      emPress = 0.24 * eb;
+      emSquint = 0.22 * eb;
+      emLidDroop = 0.22 * eb;
+      emInnerBrowY = 0.16 * eb;
+      emExplicitBrowAsym = 0.18 * eb;
+      emPupilDilate = 0.36 * eb;
+      emBlushAmount = 0.56 * eb;
+      emHeadTiltPitch = -0.1 * eb;
+      break;
+    }
+    case "sarcastic": {
+      emSmile = 0.08 * eb;
+      smirkBias = 0.58 * eb;
+      emMouthSkewX = 0.42 * eb;
+      emInnerBrowY = 0.1 * eb;
+      emOuterBrowY = 0.32 * eb;
+      emExplicitBrowAsym = 0.84 * eb;
+      emSquint = 0.28 * eb;
+      emLidDroop = 0.24 * eb;
+      emEyeRoll = 0.3 * eb;
+      break;
+    }
+    case "eyeroll": {
+      emEyeRoll = 1.0 * eb;
+      emEyeWide = 0.28 * eb;
+      emLidDroop = 0.08 * eb;
+      emInnerBrowY = 0.22 * eb;
+      emInnerBrowPinch = 0.2 * eb;
+      emExplicitBrowAsym = 0.36 * eb;
+      emSmile = -0.18 * eb;
+      emPress = 0.34 * eb;
+      emMouthSkewX = -0.2 * eb;
+      emHeadTiltPitch = 0.14 * eb;
+      break;
+    }
+    case "proud": {
+      emSmile = 0.4 * eb;
+      emWide = 0.16 * eb;
+      emCheek = 0.38 * eb;
       emSquint = 0.18 * eb;
       emInnerBrowY = 0.14 * eb;
-      emOuterBrowY = 0.2 * eb;
+      emOuterBrowY = 0.22 * eb;
       emHeadTiltPitch = 0.16 * eb;
       emShoulderShrug = -0.15 * eb;
       break;
     }
     case "blushing": {
-      emSmile = 0.32 * eb;
+      emSmile = 0.36 * eb;
       emPress = 0.18 * eb;
-      emCheek = 0.38 * eb;
+      emCheek = 0.4 * eb;
       emSquint = 0.24 * eb;
       emInnerBrowY = 0.22 * eb;
       emOuterBrowY = 0.14 * eb;
@@ -746,13 +838,13 @@ export function stepExpressionEngine(
       break;
     }
     case "sad": {
-      emInnerBrowY = 0.52 * eb;
-      emInnerBrowPinch = 0.36 * eb;
+      emInnerBrowY = 0.54 * eb;
+      emInnerBrowPinch = 0.38 * eb;
       emOuterBrowY = -0.34 * eb;
-      emSmile = -0.44 * eb;
+      emSmile = -0.46 * eb;
       emSquint = 0.24 * eb;
       emLidDroop = 0.18 * eb;
-      emEyeWater = 0.42 * eb;
+      emEyeWater = 0.44 * eb;
       emEyeRedness = 0.18 * eb;
       emHeadTiltPitch = -0.18 * eb;
       emShoulderShrug = -0.35 * eb;
@@ -761,45 +853,42 @@ export function stepExpressionEngine(
       break;
     }
     case "crying": {
-      // Intense sobbing tension: tense lifted cheeks, squinted wet eyes, pinched inner brows, trembling open grimace
-      const sobQuiver = Math.sin(t * 11.2) * 0.1 * eb;
-      emInnerBrowY = 0.7 * eb;
-      emInnerBrowPinch = 0.76 * eb;
+      const sobQuiver = Math.sin(t * 9.5) * 0.08 * eb;
+      emInnerBrowY = 0.64 * eb;
+      emInnerBrowPinch = 0.58 * eb;
       emOuterBrowY = -0.38 * eb;
-      emCheek = 0.62 * eb;
-      emSmile = -0.46 * eb;
-      emWide = 0.38 * eb;
-      emSquint = 0.64 * eb;
+      emSmile = -0.6 * eb;
+      emLowerLipDrop = 0.18 * eb;
+      emSquint = 0.48 * eb;
       emLidDroop = 0.16 * eb;
-      emOpen = Math.max(emOpen, active ? 0.2 : 0.26 * eb + Math.max(0, sobQuiver));
-      emNoseFlare = 0.44 * eb;
-      emHeadTiltPitch = -0.18 * eb;
-      emShoulderShrug = -0.18 * eb + Math.sin(t * 5.2) * 0.14 * eb;
-      emTearAmount = 0.94 * eb;
-      emEyeWater = 0.96 * eb;
-      emEyeRedness = 0.58 * eb;
-      emBlushAmount = 0.38 * eb;
+      emOpen = Math.max(emOpen, 0.14 * eb + Math.max(0, sobQuiver));
+      emNoseFlare = 0.24 * eb;
+      emHeadTiltPitch = -0.2 * eb;
+      emShoulderShrug = -0.24 * eb + Math.sin(t * 3.8) * 0.12 * eb;
+      emTearAmount = 0.88 * eb;
+      emEyeWater = 0.92 * eb;
+      emEyeRedness = 0.52 * eb;
+      emBlushAmount = 0.34 * eb;
       emMouthSkewX = 0;
       smirkBias = 0;
       break;
     }
     case "heartbroken": {
-      const sob = Math.sin(t * 7.8) * 0.15 * eb;
-      emInnerBrowY = 0.8 * eb;
-      emInnerBrowPinch = 0.86 * eb;
-      emOuterBrowY = -0.42 * eb;
-      emCheek = 0.72 * eb;
-      emSmile = -0.54 * eb;
-      emWide = 0.44 * eb;
-      emSquint = 0.72 * eb;
-      emOpen = Math.max(emOpen, active ? 0.28 : 0.34 * eb + Math.max(0, sob));
-      emNoseFlare = 0.54 * eb;
-      emHeadTiltPitch = -0.22 * eb;
-      emShoulderShrug = -0.24 * eb + Math.sin(t * 5.8) * 0.16 * eb;
+      const sob = Math.sin(t * 5.2) * 0.14 * eb;
+      emInnerBrowY = 0.72 * eb;
+      emInnerBrowPinch = 0.72 * eb;
+      emOuterBrowY = -0.44 * eb;
+      emSmile = -0.7 * eb;
+      emLowerLipDrop = 0.24 * eb;
+      emSquint = 0.58 * eb;
+      emOpen = Math.max(emOpen, 0.26 * eb + Math.max(0, sob));
+      emNoseFlare = 0.36 * eb;
+      emHeadTiltPitch = -0.24 * eb;
+      emShoulderShrug = -0.32 * eb + Math.sin(t * 4.4) * 0.16 * eb;
       emTearAmount = 1.0 * eb;
       emEyeWater = 1.0 * eb;
-      emEyeRedness = 0.68 * eb;
-      emBlushAmount = 0.44 * eb;
+      emEyeRedness = 0.65 * eb;
+      emBlushAmount = 0.42 * eb;
       emMouthSkewX = 0;
       smirkBias = 0;
       break;
@@ -808,7 +897,7 @@ export function stepExpressionEngine(
       emInnerBrowY = 0.34 * eb;
       emInnerBrowPinch = 0.18 * eb;
       emOuterBrowY = -0.22 * eb;
-      emSmile = -0.22 * eb;
+      emSmile = -0.24 * eb;
       emLidDroop = 0.34 * eb;
       emEyeWater = 0.3 * eb;
       emHeadTiltPitch = -0.14 * eb;
@@ -818,116 +907,124 @@ export function stepExpressionEngine(
       break;
     }
     case "angry": {
-      // Realistic straight-angled brow glare: inner brows pinch deeply & dip while outer tails lift crisply near temple
-      emInnerBrowY = -0.36 * eb;
-      emInnerBrowPinch = 0.94 * eb;
-      emOuterBrowY = 0.2 * eb;
-      emSquint = 0.42 * eb;
-      emSmile = -0.44 * eb;
-      emPress = 0.36 * eb;
-      emCheek = 0.1 * eb;
-      emNoseFlare = 0.56 * eb;
-      emHeadTiltPitch = -0.14 * eb;
+      // Strong readable brow glare + clenched tense jaw/nostril flare without grotesque distortion
+      emInnerBrowY = -0.46 * eb;
+      emInnerBrowPinch = 1.0 * eb;
+      emOuterBrowY = 0.26 * eb;
+      emSquint = 0.46 * eb;
+      emSmile = -0.52 * eb;
+      emWide = 0.12 * eb;
+      emPress = 0.38 * eb;
+      emUpperLipLift = 0.14 * eb;
+      emCheek = 0.12 * eb;
+      emNoseFlare = 0.68 * eb;
+      emHeadTiltPitch = -0.16 * eb;
       emShoulderShrug = 0.18 * eb;
       emMouthSkewX = 0;
       smirkBias = 0;
       break;
     }
     case "furious": {
-      emInnerBrowY = -0.46 * eb;
-      emInnerBrowPinch = 1.0 * eb;
-      emOuterBrowY = 0.28 * eb;
-      emSquint = 0.48 * eb;
-      emEyeWide = 0.18 * eb;
-      emSmile = -0.6 * eb;
-      emWide = 0.24 * eb;
-      emPress = active ? 0.15 : 0.3 * eb;
-      emOpen = Math.max(emOpen, active ? 0.28 : 0.24 * eb);
-      emNoseFlare = 0.84 * eb;
-      emHeadTiltPitch = -0.18 * eb;
-      emShoulderShrug = 0.36 * eb;
-      emEyeRedness = 0.28 * eb;
-      emSweatAmount = 0.25 * eb;
-      emBlushAmount = 0.32 * eb;
+      emInnerBrowY = -0.56 * eb;
+      emInnerBrowPinch = 1.05 * eb;
+      emOuterBrowY = 0.34 * eb;
+      emSquint = 0.5 * eb;
+      emEyeWide = 0.2 * eb;
+      emSmile = -0.66 * eb;
+      emWide = 0.34 * eb;
+      emUpperLipLift = 0.46 * eb;
+      emLowerLipDrop = 0.28 * eb;
+      emPress = active ? 0.12 : 0.22 * eb;
+      emOpen = Math.max(emOpen, active ? 0.3 : 0.28 * eb);
+      emNoseFlare = 0.92 * eb;
+      emHeadTiltPitch = -0.2 * eb;
+      emShoulderShrug = 0.34 * eb;
+      emEyeRedness = 0.32 * eb;
+      emSweatAmount = 0.28 * eb;
+      emBlushAmount = 0.36 * eb;
       emMouthSkewX = 0;
       smirkBias = 0;
       break;
     }
     case "disgusted": {
-      emInnerBrowY = -0.28 * eb;
-      emInnerBrowPinch = 0.8 * eb;
-      emOuterBrowY = -0.12 * eb;
-      emSquint = 0.58 * eb;
+      emInnerBrowY = -0.36 * eb;
+      emInnerBrowPinch = 0.94 * eb;
+      emOuterBrowY = -0.14 * eb;
+      emSquint = 0.64 * eb;
+      emCheek = 0.38 * eb;
       emSmile = -0.48 * eb;
-      emWide = 0.14 * eb;
-      emOpen = Math.max(emOpen, active ? 0.12 : 0.14 * eb);
-      emMouthSkewX = -0.32 * eb;
+      emUpperLipLift = 0.78 * eb;
+      emLowerLipDrop = 0.16 * eb;
+      emMouthSkewX = -0.36 * eb;
       emNoseFlare = 1.0 * eb;
-      emHeadTiltPitch = 0.12 * eb;
-      emShoulderShrug = 0.12 * eb;
+      emHeadTiltPitch = 0.1 * eb;
+      emShoulderShrug = 0.2 * eb;
       break;
     }
     case "skeptical": {
-      emInnerBrowY = 0.14 * eb;
-      emInnerBrowPinch = 0.34 * eb;
-      emOuterBrowY = 0.34 * eb;
-      emExplicitBrowAsym = 0.78 * eb;
+      emInnerBrowY = 0.08 * eb;
+      emInnerBrowPinch = 0.28 * eb;
+      emOuterBrowY = 0.32 * eb;
+      emExplicitBrowAsym = 0.8 * eb;
       emSquint = 0.28 * eb;
-      emPress = 0.28 * eb;
+      emPress = 0.3 * eb;
       emMouthSkewX = 0.38 * eb;
-      smirkBias = 0.34 * eb;
+      smirkBias = 0.28 * eb;
       break;
     }
     case "surprised": {
-      emInnerBrowY = 0.72 * eb;
-      emOuterBrowY = 0.74 * eb;
-      emEyeWide = 0.64 * eb;
+      emInnerBrowY = 0.76 * eb;
+      emOuterBrowY = 0.78 * eb;
+      emEyeWide = 0.68 * eb;
       emCheek = 0.1 * eb;
-      emRound = active ? 0.38 : 0.34 * eb;
+      emRound = active ? 0.4 : 0.38 * eb;
+      emLowerLipDrop = 0.24 * eb;
       emNoseFlare = 0.22 * eb;
-      emOpen = Math.max(emOpen, active ? 0.42 : 0.44 * eb);
+      emOpen = Math.max(emOpen, active ? 0.32 : 0.36 * eb);
       emHeadTiltPitch = 0.12 * eb;
       emShoulderShrug = 0.26 * eb;
-      emPupilDilate = 0.24 * eb;
+      emPupilDilate = 0.28 * eb;
       break;
     }
     case "fear": {
       const tremor = Math.sin(t * 16) * 0.05 * eb;
-      emInnerBrowY = 0.64 * eb;
-      emInnerBrowPinch = 0.62 * eb;
-      emOuterBrowY = 0.2 * eb;
-      emEyeWide = 0.68 * eb;
-      emSmile = -0.36 * eb;
+      emInnerBrowY = 0.66 * eb;
+      emInnerBrowPinch = 0.66 * eb;
+      emOuterBrowY = 0.22 * eb;
+      emEyeWide = 0.72 * eb;
+      emSmile = -0.4 * eb;
       emWide = 0.24 * eb;
-      emNoseFlare = 0.38 * eb;
-      emOpen = Math.max(emOpen, active ? 0.26 : 0.24 * eb + Math.max(0, tremor));
+      emLowerLipDrop = 0.18 * eb;
+      emNoseFlare = 0.42 * eb;
+      emOpen = Math.max(emOpen, active ? 0.22 : 0.22 * eb + Math.max(0, tremor));
       emHeadTiltPitch = 0.1 * eb;
-      emShoulderShrug = 0.52 * eb;
-      emPupilDilate = 0.42 * eb;
-      emSweatAmount = 0.5 * eb;
-      emBlushAmount = -0.24 * eb;
+      emShoulderShrug = 0.62 * eb;
+      emPupilDilate = 0.44 * eb;
+      emSweatAmount = 0.54 * eb;
+      emBlushAmount = -0.62 * eb;
       break;
     }
     case "nervous": {
-      emInnerBrowY = 0.42 * eb;
-      emInnerBrowPinch = 0.48 * eb;
+      emInnerBrowY = 0.44 * eb;
+      emInnerBrowPinch = 0.5 * eb;
       emOuterBrowY = 0.08 * eb;
       emEyeWide = 0.28 * eb;
       emPress = 0.56 * eb;
-      emSmile = -0.14 * eb;
-      emMouthSkewX = Math.sin(t * 2.4) * 0.22 * eb;
+      emLipBite = 0.24 * eb;
+      emSmile = -0.16 * eb;
+      emMouthSkewX = Math.sin(t * 2.4) * 0.24 * eb;
       emNoseFlare = 0.28 * eb;
       emShoulderShrug = 0.45 * eb;
-      emSweatAmount = 0.78 * eb;
-      emPupilDilate = 0.22 * eb;
+      emSweatAmount = 0.8 * eb;
+      emPupilDilate = 0.24 * eb;
       break;
     }
     case "sweating": {
-      emInnerBrowY = 0.26 * eb;
-      emInnerBrowPinch = 0.34 * eb;
+      emInnerBrowY = 0.28 * eb;
+      emInnerBrowPinch = 0.36 * eb;
       emOuterBrowY = 0.12 * eb;
       emEyeWide = 0.18 * eb;
-      emOpen = Math.max(emOpen, 0.14 * eb + Math.sin(t * 3.8) * 0.05 * eb);
+      emOpen = Math.max(emOpen, 0.16 * eb + Math.sin(t * 3.8) * 0.05 * eb);
       emNoseFlare = 0.48 * eb;
       emSweatAmount = 1.0 * eb;
       emBlushAmount = 0.24 * eb;
@@ -935,29 +1032,31 @@ export function stepExpressionEngine(
       break;
     }
     case "pain": {
-      emInnerBrowY = 0.32 * eb;
-      emInnerBrowPinch = 0.92 * eb;
+      emInnerBrowY = 0.34 * eb;
+      emInnerBrowPinch = 0.96 * eb;
       emOuterBrowY = -0.22 * eb;
-      emSquint = 0.78 * eb;
-      emLidDroop = 0.22 * eb;
-      emSmile = -0.48 * eb;
-      emWide = 0.46 * eb;
-      emOpen = Math.max(emOpen, 0.28 * eb);
-      emNoseFlare = 0.62 * eb;
+      emSquint = 0.86 * eb;
+      emLidDroop = 0.24 * eb;
+      emSmile = -0.52 * eb;
+      emWide = 0.56 * eb;
+      emUpperLipLift = 0.48 * eb;
+      emLowerLipDrop = 0.38 * eb;
+      emOpen = Math.max(emOpen, 0.36 * eb);
+      emNoseFlare = 0.68 * eb;
       emShoulderShrug = 0.68 * eb;
-      emEyeWater = 0.55 * eb;
-      emEyeRedness = 0.36 * eb;
-      emSweatAmount = 0.58 * eb;
+      emEyeWater = 0.58 * eb;
+      emEyeRedness = 0.38 * eb;
+      emSweatAmount = 0.6 * eb;
       break;
     }
     case "drunk": {
       emInnerBrowY = 0.18 * eb;
       emOuterBrowY = -0.14 * eb;
-      emExplicitBrowAsym = 0.3 * eb;
+      emExplicitBrowAsym = 0.32 * eb;
       emLidDroop = 0.48 * eb;
       emSquint = 0.22 * eb;
-      emSmile = 0.38 * eb;
-      emMouthSkewX = 0.28 * eb;
+      emSmile = 0.42 * eb;
+      emMouthSkewX = 0.3 * eb;
       emOpen = Math.max(emOpen, 0.1 * eb);
       emHeadTiltPitch = -0.1 * eb;
       emEyeWater = 0.36 * eb;
@@ -971,7 +1070,7 @@ export function stepExpressionEngine(
       emOuterBrowY = 0.06 * eb;
       emLidDroop = 0.62 * eb;
       emSquint = 0.32 * eb;
-      emSmile = 0.42 * eb;
+      emSmile = 0.44 * eb;
       emCheek = 0.44 * eb;
       emOpen = Math.max(emOpen, 0.08 * eb);
       emEyeWater = 0.4 * eb;
@@ -985,8 +1084,8 @@ export function stepExpressionEngine(
       emInnerBrowY = 0.16 * eb;
       emOuterBrowY = -0.22 * eb;
       emLidDroop = 0.68 * eb;
-      emOpen = Math.max(emOpen, active ? 0 : yawnCycle * 0.64 * eb);
-      emRound = Math.max(emRound, yawnCycle * 0.44 * eb);
+      emOpen = Math.max(emOpen, active ? 0 : yawnCycle * 0.48 * eb);
+      emRound = Math.max(emRound, yawnCycle * 0.4 * eb);
       emHeadTiltPitch = -0.16 * eb;
       emShoulderShrug = -0.42 * eb;
       emEyeWater = 0.25 * eb;
@@ -997,12 +1096,12 @@ export function stepExpressionEngine(
       emInnerBrowPinch = 0.42 * eb;
       emOuterBrowY = -0.28 * eb;
       emLidDroop = 0.36 * eb;
-      emSmile = -0.34 * eb;
+      emSmile = -0.36 * eb;
       emNoseFlare = 0.22 * eb;
       emHeadTiltPitch = -0.14 * eb;
       emShoulderShrug = -0.32 * eb;
       emSweatAmount = 0.56 * eb;
-      emBlushAmount = -0.32 * eb;
+      emBlushAmount = -0.72 * eb;
       emEyeWater = 0.34 * eb;
       emEyeRedness = 0.22 * eb;
       break;
@@ -1022,55 +1121,98 @@ export function stepExpressionEngine(
   emEyeWide += empathy.eyeWide * 0.55 * empathyWeight;
   emNoseFlare +=
     (empathy.noseScrunch * 0.72 + (activePose === "thoughtfulFurrow" ? 0.14 : 0)) * empathyWeight;
-  emOpen = Math.max(emOpen, observedSmile * 0.18);
 
   let emSmileR =
     emSmile + Math.max(0, smirkBias) * 0.72 + (st.winkSide > 0 ? winkStrength * 0.24 : 0);
   let emSmileL =
     emSmile + Math.max(0, -smirkBias) * 0.72 + (st.winkSide < 0 ? winkStrength * 0.24 : 0);
 
+  let mirrorBrowAsym = 0;
   if (directMirror) {
     const mirrorWeight = 1;
-    emSmile = userFace.smile * 1.04 - (userFace.mouthFrown ?? 0) * 0.65;
-    emSmileR = (userFace.smileRight ?? userFace.smile) * 1.06 - (userFace.mouthFrown ?? 0) * 0.65;
-    emSmileL = (userFace.smileLeft ?? userFace.smile) * 1.06 - (userFace.mouthFrown ?? 0) * 0.65;
+    emSmile = userFace.smile * 1.02 - (userFace.mouthFrown ?? 0) * 0.68;
+    emSmileR = (userFace.smileRight ?? userFace.smile) * 1.05 - (userFace.mouthFrown ?? 0) * 0.68;
+    emSmileL = (userFace.smileLeft ?? userFace.smile) * 1.05 - (userFace.mouthFrown ?? 0) * 0.68;
     emMouthSkewX = userFace.mouthSkewX ?? 0;
-    emWide = userFace.mouthWide ?? Math.max(0, userFace.smile * 0.38);
+    emUpperLipLift = Math.max(emUpperLipLift, userFace.upperLipLift ?? 0);
+    emLowerLipDrop = Math.max(emLowerLipDrop, userFace.lowerLipDrop ?? 0);
+    emLipBite = Math.max(emLipBite, (userFace.mouthShrug ?? 0) * 0.9);
+    emWide = userFace.mouthWide ?? Math.max(0, userFace.smile * 0.35);
     emRound = userFace.mouthRound ?? 0;
     emPress = userFace.mouthPress ?? 0;
-    const avgCheekSq = ((userFace.cheekSquintLeft ?? 0) + (userFace.cheekSquintRight ?? 0)) * 0.5;
-    emCheek = Math.max(userFace.smile * 0.84, avgCheekSq * 0.9) * mirrorWeight;
-    emSquint = (userFace.eyeSquint ?? 0) * mirrorWeight + userFace.smile * 0.44;
+    emCheek = userFace.smile * 0.78 * mirrorWeight;
+    emSquint = (userFace.eyeSquint ?? 0) * mirrorWeight + userFace.smile * 0.4;
     emOpen = Math.max(emOpen, userFace.mouthOpen * mirrorWeight);
-    emInnerBrowY = (userFace.browInnerUp ?? userFace.browRaise) * 0.95 - userFace.browFurrow * 0.72;
-    emInnerBrowPinch = userFace.browFurrow * 1.15;
-    emOuterBrowY = userFace.browRaise * 0.9 - userFace.browFurrow * 0.06;
-    // Independent L/R eyebrow asymmetry in mirror mode (screen-left = userFace.browRight, screen-right = userFace.browLeft)
-    if (userFace.browLeft !== undefined && userFace.browRight !== undefined) {
-      emExplicitBrowAsym = (userFace.browLeft - userFace.browRight) * 0.78;
-    }
-    emNoseFlare = (userFace.noseSneer ?? 0) * 1.18;
+    emInnerBrowY = (userFace.browInnerUp ?? userFace.browRaise) * 0.95 - userFace.browFurrow * 0.55;
+    emInnerBrowPinch = userFace.browFurrow;
+    emOuterBrowY = userFace.browRaise * 0.9 - userFace.browFurrow * 0.08;
+    const bL = userFace.browRaiseLeft ?? userFace.browRaise;
+    const bR = userFace.browRaiseRight ?? userFace.browRaise;
+    mirrorBrowAsym = Math.max(-0.9, Math.min(0.9, (bL - bR) * 1.15));
+    emNoseFlare = userFace.noseSneer ?? 0;
     emEyeWide = userFace.eyeWide ?? 0;
+    if (userFace.gazeY > 0.45) {
+      emEyeRoll = Math.min(1, (userFace.gazeY - 0.45) * 1.6);
+    }
   }
 
-  // 4) Phoneme-differentiated speech prosody & coarticulation
+  // 4) Phoneme-differentiated speech prosody & coarticulation (conversational by default, occasional wider emphasis)
   const visPress = active ? Math.min(1, visemes.press ?? 0) : 0;
   const visLabio = active ? Math.min(1, visemes.labiodental ?? 0) : 0;
   const visStress = active ? Math.min(1, visemes.stress ?? 0) : 0;
+  const emphaticPeak =
+    active && visemes.open > 0.56 && visStress > 0.24
+      ? ((visemes.open - 0.56) / 0.44) * Math.min(1, (visStress - 0.2) * 1.45) * 0.28
+      : 0;
   const speechOpen = active
-    ? Math.min(1, visemes.open * 1.06 * (1 - visPress * 0.85) * (1 - visLabio * 0.45))
+    ? Math.min(
+        1.06,
+        (visemes.open * 0.88 + emphaticPeak) * (1 - visPress * 0.85) * (1 - visLabio * 0.45),
+      )
     : 0;
   const openDelta = Math.max(0, speechOpen - st.prevVisemeOpen);
   st.prevVisemeOpen = speechOpen;
   st.browBeat = Math.max(st.browBeat * Math.exp(-dt * 5.2), openDelta * 2.2 + visStress * 0.45);
 
+  // Trigger occasional natural swallows during brief speech breath pauses as well as after speech
+  if (
+    active &&
+    !directMirror &&
+    st.swallowStartAt === 0 &&
+    visemes.level < 0.14 &&
+    st.open < 0.08 &&
+    now >= st.nextSwallowEligibleAt &&
+    Math.random() < 0.38
+  ) {
+    st.swallowStartAt = now + 60;
+    st.swallowUntil = st.swallowStartAt + 680;
+    st.nextSwallowEligibleAt = now + 11500 + Math.random() * 9500;
+  }
+
+  let swallowWave = 0;
+  let swallowLipContact = 0;
+  let swallowChinDip = 0;
+  if (!directMirror && st.swallowStartAt > 0 && now >= st.swallowStartAt && now < st.swallowUntil) {
+    const swU = (now - st.swallowStartAt) / Math.max(1, st.swallowUntil - st.swallowStartAt);
+    const speechFade = active ? Math.max(0.25, 1 - Math.max(0, visemes.level - 0.12) * 2.5) : 1;
+    swallowWave = Math.sin(Math.min(1, Math.max(0, swU)) * Math.PI) * speechFade;
+    swallowLipContact = active
+      ? 0
+      : Math.sin(Math.min(1, swU / 0.55) * Math.PI) * (swU < 0.55 ? 0.26 : 0);
+    swallowChinDip = -swallowWave * 0.036;
+  } else if (now >= st.swallowUntil) {
+    st.swallowStartAt = 0;
+    st.swallowUntil = 0;
+  }
+  st.swallowAmount += (swallowWave * mScale - st.swallowAmount) * (1 - Math.exp(-dt * 18));
+
   const gatedOpen = Math.max(speechOpen, visPress > 0.4 ? 0 : emOpen);
   const motion = mouthMotion(
-    gatedOpen < 0.025 ? 0 : Math.min(1, gatedOpen * mouthAmp),
+    gatedOpen < 0.004 ? 0 : Math.min(1, gatedOpen * (directMirror ? 1.02 : mouthAmp)),
     opts.hasVisibleTeeth,
     opts.restMouthRatio,
   );
-  const targetOpen = Math.min(1, motion.opening * (isAnime ? 1.14 : 1.0));
+  const targetOpen = Math.min(1.04, motion.opening * 0.98 + emphaticPeak * 0.24);
   const targetWide = Math.min(1, (active ? Math.max(visemes.wide, emWide) : emWide) * wideAmp);
   const targetRound = Math.min(
     1,
@@ -1078,15 +1220,25 @@ export function stepExpressionEngine(
   );
   const targetPress = active
     ? Math.max(visPress, emPress, emotion === "angry" ? 0.22 : 0)
-    : Math.max(emPress, emotion === "angry" || emotion === "furious" ? 0.24 : 0);
+    : Math.max(emPress, swallowLipContact, emotion === "angry" || emotion === "furious" ? 0.24 : 0);
 
-  const openRate = targetOpen > st.open ? 22.0 : 16.5;
+  const openRate = targetOpen > st.open ? 22.0 : 17.0;
   const mouthAlpha = 1 - Math.exp(-dt * openRate);
   st.open += (targetOpen - st.open) * mouthAlpha;
   st.wide += (targetWide - st.wide) * (1 - Math.exp(-dt * 16));
   st.round += (targetRound - st.round) * (1 - Math.exp(-dt * 16));
   st.lipPress += (targetPress - st.lipPress) * (1 - Math.exp(-dt * 20));
   st.labiodental += (visLabio - st.labiodental) * (1 - Math.exp(-dt * 18));
+  const smilePartBoost = Math.max(0, emSmile - 0.32) * (1 - Math.min(1, targetOpen * 5));
+  st.upperLipLift +=
+    (Math.min(1, emUpperLipLift + smilePartBoost * 0.36 + (active ? st.wide * 0.14 : 0)) -
+      st.upperLipLift) *
+    (1 - Math.exp(-dt * 18));
+  st.lowerLipDrop +=
+    (Math.min(1, emLowerLipDrop + smilePartBoost * 0.32 + (active ? st.open * 0.12 : 0)) -
+      st.lowerLipDrop) *
+    (1 - Math.exp(-dt * 18));
+  st.lipBite += (emLipBite - st.lipBite) * (1 - Math.exp(-dt * 16));
 
   const speechBrowBoost = active ? Math.min(0.32, st.open * 0.14 + st.browBeat * 0.26) : 0;
   const exprAlpha = 1 - Math.exp(-dt * (directMirror ? 15.0 : 13.5));
@@ -1099,31 +1251,32 @@ export function stepExpressionEngine(
     ((angryLock ? emOuterBrowY : emOuterBrowY + speechBrowBoost) * browAmp - st.outerBrowY) *
     exprAlpha;
   st.eyeSquint += (emSquint - st.eyeSquint) * exprAlpha;
-  st.eyeWide += (Math.min(1, emEyeWide + (isAnime && active ? 0.08 : 0)) - st.eyeWide) * exprAlpha;
+  st.eyeWide += (Math.min(1, emEyeWide) - st.eyeWide) * exprAlpha;
+  st.eyeRoll += (emEyeRoll - st.eyeRoll) * exprAlpha;
   st.lidDroop += (emLidDroop - st.lidDroop) * exprAlpha;
   st.cheekLift +=
     (emCheek + (active ? st.open * 0.08 + st.wide * 0.12 : 0) - st.cheekLift) *
     (1 - Math.exp(-dt * 11.5));
-  const smileAlpha = 1 - Math.exp(-dt * 11.5);
-  const sAmp = isAnime ? 1.06 : 1.0;
-  st.smileR += (emSmileR * sAmp - st.smileR) * smileAlpha;
-  st.smileL += (emSmileL * sAmp - st.smileL) * smileAlpha;
+  const smileAlpha = 1 - Math.exp(-dt * 12.5);
+  st.smileR += (emSmileR - st.smileR) * smileAlpha;
+  st.smileL += (emSmileL - st.smileL) * smileAlpha;
   st.smile = (st.smileR + st.smileL) * 0.5;
   st.mouthSkewX += (emMouthSkewX - st.mouthSkewX) * smileAlpha;
   st.noseFlare +=
-    (Math.max(emNoseFlare, active ? visemes.level * 0.16 : 0) - st.noseFlare) *
+    (Math.max(emNoseFlare, active ? visemes.level * 0.18 : 0, Math.max(0, st.open - 0.24) * 0.36) -
+      st.noseFlare) *
     (1 - Math.exp(-dt * 12));
 
   // Brisk physical shader tone/sweat/tear transitions
   const physAlpha = 1 - Math.exp(-dt * 8.5);
   st.tearAmount += (emTearAmount * mScale - st.tearAmount) * physAlpha;
   st.eyeWater += (emEyeWater * mScale - st.eyeWater) * physAlpha;
-  st.eyeRedness += (emEyeRedness * mScale - st.eyeRedness) * physAlpha;
+  st.eyeRedness += (emEyeRedness * 0.42 * mScale - st.eyeRedness) * physAlpha;
   st.pupilDilate += (emPupilDilate * mScale - st.pupilDilate) * physAlpha;
   st.sweatAmount += (emSweatAmount * mScale - st.sweatAmount) * physAlpha;
   st.blushAmount += (emBlushAmount * mScale - st.blushAmount) * physAlpha;
 
-  // 5) Subtle, natural 3D head, neck & interesting articulated shoulder motion
+  // 5) Decoupled 3D cranium, cervical neck & anatomical torso/shoulder kinematics
   if (listening && now >= st.nextNodAt) {
     st.nodImpulse = 0.65 + Math.random() * 0.35;
     st.nextNodAt = now + 1800 + Math.random() * 2000;
@@ -1141,9 +1294,11 @@ export function stepExpressionEngine(
         : 1.45;
   const breath = Math.sin(t * breathFreq) * 0.5 + 0.5;
   const gazeHeadLeadX = winkPreparing ? 0 : listening ? st.gazeX * 0.12 : st.gazeX * 0.24;
-  const gazeHeadLeadY = winkPreparing ? 0 : listening ? st.gazeY * 0.1 : st.gazeY * 0.16;
+  const suppressUpwardHeadLead = emotion === "intense" || emotion === "eyeroll";
+  const gazeHeadLeadY =
+    winkPreparing || suppressUpwardHeadLead ? 0 : listening ? st.gazeY * 0.1 : st.gazeY * 0.16;
   const speechNod = active ? Math.sin(t * 3.1) * st.browBeat * 0.3 : 0;
-  const chuckleBounce = emotion === "laugh" ? Math.sin(t * 11.4) * 0.14 : 0;
+  const chuckleBounce = emotion === "laugh" ? Math.sin(t * 6.4) * 0.1 : 0;
   const drunkSwayYaw =
     emotion === "drunk"
       ? Math.sin(t * 0.95) * 0.24
@@ -1175,19 +1330,24 @@ export function stepExpressionEngine(
         empathy.headYaw * 0.85) *
       mScale;
 
+  const idlePitchDriftScale = emotion === "intense" ? 0.35 : 1;
   const targetPitch = directMirror
     ? mirrorPitch * mScale
-    : (Math.sin(t * 0.74) * (listening ? 0.11 : 0.15) +
-        Math.cos(t * 0.34) * 0.08 +
-        (active ? -st.open * 0.05 - speechNod * 0.52 : nodWave * 0.88 + 0.02) +
+    : ((Math.sin(t * 0.74) * (listening ? 0.11 : 0.15) + Math.cos(t * 0.34) * 0.08 + 0.02) *
+        idlePitchDriftScale +
+        (active ? -st.open * 0.05 - speechNod * 0.52 : nodWave * 0.88) +
         chuckleBounce * 0.55 +
         emHeadTiltPitch +
+        swallowChinDip +
         gazeHeadLeadY * 0.68 +
         empathy.headPitch * 0.8) *
       mScale;
 
   const poseRollBias =
-    activePose === "curiousTilt" || emotion === "flirty"
+    activePose === "curiousTilt" ||
+    emotion === "flirty" ||
+    emotion === "smirk" ||
+    emotion === "compassionate"
       ? st.poseDir * 0.045
       : isSideThinking
         ? st.poseDir * 0.02
@@ -1210,13 +1370,32 @@ export function stepExpressionEngine(
         (emotion === "surprised" ? 0.014 * eb : 0)) *
       mScale;
 
-  const headAlpha = 1 - Math.exp(-dt * (directMirror ? 7.2 : isAlteredSlow ? 2.4 : 4.0));
-  const yawLimit = directMirror ? 0.78 : 0.64;
-  const pitchLimit = directMirror ? 0.56 : 0.46;
+  const headAlpha = 1 - Math.exp(-dt * (directMirror ? 7.8 : isAlteredSlow ? 2.4 : 4.2));
+  const yawLimit = directMirror ? 0.68 : 0.56;
+  const pitchLimit = directMirror ? 0.52 : 0.44;
   st.headYaw += (Math.max(-yawLimit, Math.min(yawLimit, targetYaw)) - st.headYaw) * headAlpha;
   st.headPitch +=
     (Math.max(-pitchLimit, Math.min(pitchLimit, targetPitch)) - st.headPitch) * headAlpha;
   st.headRoll += (targetRoll - st.headRoll) * headAlpha;
+
+  // Keep cervical neck & shoulders quiet during normal head turns; follow softly only on strong turns or mirror gestures
+  const deepYaw = Math.max(0, (Math.abs(st.headYaw) - (directMirror ? 0.22 : 0.34)) / 0.48);
+  const neckFollowRatio = directMirror
+    ? 0.06 + Math.min(0.28, deepYaw * 0.3)
+    : 0.04 + Math.min(0.18, deepYaw * 0.2);
+  const neckIndepYaw = directMirror
+    ? 0
+    : (Math.sin(t * 0.18 + 1.2) * 0.018 +
+        (activePose === "attentiveWarm" ? st.poseDir * 0.014 : 0)) *
+      mScale;
+  const neckIndepPitch = directMirror
+    ? 0
+    : (Math.cos(t * 0.24 + 0.5) * 0.016 + swallowWave * 0.018) * mScale;
+  const neckAlpha = 1 - Math.exp(-dt * 2.8);
+  st.neckYaw += (st.headYaw * neckFollowRatio + neckIndepYaw - st.neckYaw) * neckAlpha;
+  st.neckPitch +=
+    (st.headPitch * (directMirror ? 0.24 : 0.12) + neckIndepPitch - st.neckPitch) * neckAlpha;
+  st.neckRoll += (st.headRoll * (directMirror ? 0.26 : 0.14) - st.neckRoll) * neckAlpha;
 
   // Attentive forward lean / camera approach perspective
   const targetLean = directMirror
@@ -1228,16 +1407,16 @@ export function stepExpressionEngine(
         (activePose === "softPonder" || isSideThinking ? -0.14 : 0) +
         (emotion === "fear"
           ? -0.32 * eb
-          : emotion === "angry" || emotion === "furious"
-            ? 0.32 * eb
-            : emotion === "flirty"
+          : emotion === "angry" || emotion === "furious" || emotion === "intense"
+            ? 0.34 * eb
+            : emotion === "flirty" || emotion === "compassionate"
               ? 0.22 * eb
               : 0) +
         -st.headPitch * 0.12) *
       mScale;
   st.forwardLean += (Math.max(-0.4, Math.min(0.65, targetLean)) - st.forwardLean) * headAlpha;
 
-  // Tongue protrusion: mirrored directly from user camera, expressive playful peeks, or speech interdental phonemes
+  // Rare subtle tongue articulation / phoneme tongue tip lift
   if (
     !directMirror &&
     !opts.reducedMotion &&
@@ -1246,44 +1425,57 @@ export function stepExpressionEngine(
     now >= st.nextTongueAt &&
     now >= st.tongueUntil
   ) {
-    st.tongueUntil = now + 520;
-    st.nextTongueAt = now + 24000 + Math.random() * 24000;
+    st.tongueUntil = now + 460;
+    st.nextTongueAt = now + 26000 + Math.random() * 28000;
   }
-  let targetTongue = 0;
-  if (directMirror) {
-    targetTongue = userFace.tongueOut ?? 0;
-  } else if (now < st.tongueUntil) {
-    const tu = 1 - (st.tongueUntil - now) / 520;
+  let targetTongue = directMirror ? Math.max(0, userFace?.tongueOut ?? 0) * 0.96 : 0;
+  if (!directMirror && now < st.tongueUntil) {
+    const tu = 1 - (st.tongueUntil - now) / 460;
     targetTongue =
-      Math.sin(Math.min(1, Math.max(0, tu)) * Math.PI) *
-      (emotion === "laugh" || emotion === "flirty" ? 0.72 : 0.48);
+      Math.sin(Math.min(1, Math.max(0, tu)) * Math.PI) * (emotion === "laugh" ? 0.55 : 0.38);
   } else if (
+    !directMirror &&
     active &&
     ((visemes.tongue ?? 0) > 0.08 || (visemes.level > 0.16 && visemes.round > 0.18))
   ) {
-    targetTongue = Math.min(0.52, Math.max((visemes.tongue ?? 0) * 0.58, visemes.round * 0.22));
+    targetTongue = Math.min(0.46, Math.max((visemes.tongue ?? 0) * 0.56, visemes.round * 0.2));
   }
   st.tongueOut += (targetTongue - st.tongueOut) * (1 - Math.exp(-dt * 15));
 
-  // Cohesive shoulders: preserve exact shoulder silhouette with minimal unified breath & zero asymmetric shear
-  const targetTorsoSwayX = 0;
-  const targetShoulderTilt = 0;
-  const torsoAlpha = 1 - Math.exp(-dt * 3.8);
+  // Minimal torso & shoulder sway in calls (reserve stronger coupled tilts for direct mirror or occasional big leans)
+  const targetTorsoYaw = directMirror
+    ? mirrorYaw * 0.16 * mScale
+    : (Math.sin(t * 0.22) * 0.04 + st.neckYaw * 0.22) * mScale;
+  const targetTorsoSwayX = directMirror
+    ? mirrorYaw * 0.1 * mScale
+    : (Math.sin(t * 0.32) * 0.05 +
+        st.neckYaw * 0.14 +
+        (emotion === "drunk" ? Math.sin(t * 0.9) * 0.18 : 0)) *
+      mScale;
+  const targetShoulderTilt = directMirror
+    ? (userFace?.headRoll ?? 0) * 0.28 * mScale
+    : (Math.sin(t * 0.44) * 0.08 + st.neckRoll * 0.65) * mScale;
+  const torsoAlpha = 1 - Math.exp(-dt * 3.2);
+  st.torsoYaw += (targetTorsoYaw - st.torsoYaw) * torsoAlpha;
   st.torsoSwayX += (targetTorsoSwayX - st.torsoSwayX) * torsoAlpha;
   st.shoulderTilt += (targetShoulderTilt - st.shoulderTilt) * torsoAlpha;
-  st.shoulderShrug += (emShoulderShrug * mScale - st.shoulderShrug) * torsoAlpha;
+  st.shoulderShrug +=
+    ((directMirror ? emShoulderShrug : emShoulderShrug * 0.55) * mScale - st.shoulderShrug) *
+    torsoAlpha;
 
   // Keep hair strictly unified with the cranium (zero independent shear or detachment)
   st.hairShiftX = 0;
   st.hairShiftY = 0;
 
-  // Eyebrows normally move symmetrically; smooth independent L/R asymmetry when mirroring, skeptical, flirty or charismatic
+  // Eyebrows normally move symmetrically; raise single brow directly in mirror mode or on intentional asymmetric cues
   if (!directMirror && now >= st.nextBrowAccentAt) {
-    st.browAccentUntil = now + 1250;
+    st.browAccentUntil = now + 1150;
     st.browAccentSide = Math.random() < 0.5 ? 1 : -1;
-    st.nextBrowAccentAt = now + 6200 + Math.random() * 6200;
+    st.nextBrowAccentAt = now + 6500 + Math.random() * 6500;
   }
-  let targetBrowAsym = emExplicitBrowAsym * (directMirror ? 1 : st.browAccentSide) * mScale;
+  let browAsym = directMirror
+    ? mirrorBrowAsym * mScale
+    : emExplicitBrowAsym * st.browAccentSide * mScale;
   if (
     !directMirror &&
     !isSolemnOrTense &&
@@ -1291,19 +1483,17 @@ export function stepExpressionEngine(
   ) {
     const u =
       now < st.browAccentUntil
-        ? Math.max(0, Math.min(1, 1 - (st.browAccentUntil - now) / 1250))
+        ? Math.max(0, Math.min(1, 1 - (st.browAccentUntil - now) / 1150))
         : 0.5;
-    targetBrowAsym += Math.sin(u * Math.PI) * 0.24 * st.browAccentSide * mScale;
+    browAsym += Math.sin(u * Math.PI) * 0.16 * st.browAccentSide * mScale;
   }
-  st.browAsym += (targetBrowAsym - st.browAsym) * exprAlpha;
-  const browAsym = st.browAsym;
 
   return {
     blink,
     blinkR,
     blinkL,
     lidDroop: st.lidDroop,
-    open: Math.max(st.open, st.tongueOut * 0.28),
+    open: Math.max(st.open, st.tongueOut * 0.36),
     wide: st.wide,
     round: st.round,
     lipPress: st.lipPress,
@@ -1312,6 +1502,9 @@ export function stepExpressionEngine(
     smileR: st.smileR,
     smileL: st.smileL,
     mouthSkewX: st.mouthSkewX,
+    upperLipLift: st.upperLipLift,
+    lowerLipDrop: st.lowerLipDrop,
+    lipBite: st.lipBite,
     cheekLift: st.cheekLift,
     innerBrowY: st.innerBrowY,
     innerBrowPinch: st.innerBrowPinch,
@@ -1319,12 +1512,17 @@ export function stepExpressionEngine(
     browAsym,
     eyeSquint: st.eyeSquint,
     eyeWide: st.eyeWide,
+    eyeRoll: st.eyeRoll,
     noseFlare: st.noseFlare,
     gazeX: st.gazeX,
     gazeY: st.gazeY,
     headYaw: st.headYaw,
     headPitch: st.headPitch,
     headRoll: st.headRoll,
+    neckYaw: st.neckYaw,
+    neckPitch: st.neckPitch,
+    neckRoll: st.neckRoll,
+    torsoYaw: st.torsoYaw,
     headTx: st.torsoSwayX * 0.0042,
     headTy: ((breath - 0.5) * 0.003 + nodWave * 0.005) * mScale,
     torsoBreath:
@@ -1344,6 +1542,6 @@ export function stepExpressionEngine(
     pupilDilate: st.pupilDilate,
     sweatAmount: st.sweatAmount,
     blushAmount: st.blushAmount,
-    swallow: st.swallow,
+    swallowAmount: st.swallowAmount,
   };
 }

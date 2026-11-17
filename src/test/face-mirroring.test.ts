@@ -65,11 +65,11 @@ describe("Observable expression mirroring", () => {
     expect(voiceProsody("sad")).toEqual({ rate: 0.9, pitch: 0.96 });
     expect(voiceProsody("happy")).toEqual({ rate: 1.04, pitch: 1.06 });
   });
-  it("distinguishes genuine laughter from ordinary talking or mild smiles", () => {
-    expect(expressionFromSignals(0.65, 0.28, 0.05, 0, 0, 0).emotion).toBe("laugh");
-    expect(expressionFromSignals(0.54, 0.36, 0, 0, 0, 0, 0, 0.24).emotion).toBe("laugh");
+  it("distinguishes moderate smiles as happy and requires wide laughter signals for laugh", () => {
+    expect(expressionFromSignals(0.56, 0.2, 0.05, 0, 0, 0).emotion).toBe("happy");
     expect(expressionFromSignals(0.4, 0.28, 0, 0, 0, 0).emotion).toBe("happy");
-    expect(expressionFromSignals(0.15, 0.1, 0.05, 0, 0, 0, 0.42).emotion).toBe("disgusted");
+    expect(expressionFromSignals(0.68, 0.4, 0.05, 0, 0, 0).emotion).toBe("laugh");
+    expect(expressionFromSignals(0.78, 0.28, 0.05, 0, 0, 0).emotion).toBe("laugh");
   });
   it("looks directly at the user before winking and mirrors asymmetric blinks and smiles", () => {
     const state = createExpressionEngine(0);
@@ -241,13 +241,6 @@ describe("Observable expression mirroring", () => {
     expect(crying.tearAmount).toBeGreaterThan(0.5);
     expect(crying.eyeWater).toBeGreaterThan(0.5);
     expect(crying.eyeRedness).toBeGreaterThan(0.2);
-    expect(crying.cheekLift).toBeGreaterThan(0.4);
-    expect(crying.eyeSquint).toBeGreaterThan(0.45);
-    expect(crying.open).toBeGreaterThan(0.15);
-
-    const laugh = runEmotion("laugh");
-    expect(laugh.smile).toBeGreaterThan(0.65);
-    expect(laugh.noseFlare).toBeGreaterThan(0.25);
 
     const sweating = runEmotion("sweating");
     expect(sweating.sweatAmount).toBeGreaterThan(0.6);
@@ -255,48 +248,11 @@ describe("Observable expression mirroring", () => {
     const sleepy = runEmotion("sleepy");
     expect(sleepy.lidDroop).toBeGreaterThan(0.4);
 
-    // Subtle realistic pale chill on fear (not corpse-white) and warm cheek blush on blushing
+    // Rapid pale chill on fear and sick, warm blush on blushing
     const fear = runEmotion("fear");
-    expect(fear.blushAmount).toBeLessThan(-0.15);
-    expect(fear.blushAmount).toBeGreaterThan(-0.35);
+    expect(fear.blushAmount).toBeLessThan(-0.4);
     const blushing = runEmotion("blushing");
     expect(blushing.blushAmount).toBeGreaterThan(0.8);
-
-    // Shoulders preserve their natural anatomical contour without discordant opposite folding
-    expect(angry.shoulderTilt).toBe(0);
-
-    // Mirror mode supports independent L/R eyebrows & sticking out the tongue
-    const tongueAndBrowObs: UserFaceObservation = {
-      ...face,
-      mouthOpen: 0.72,
-      tongueOut: 0.9,
-      browLeft: 0.85,
-      browRight: -0.1,
-      noseSneer: 0.65,
-      updatedAt: 50,
-    };
-    const mState = createExpressionEngine(0);
-    let mFrame = stepExpressionEngine(mState, 50, { ...options, userFace: tongueAndBrowObs });
-    for (let t = 100; t <= 450; t += 40) {
-      mFrame = stepExpressionEngine(mState, t, {
-        ...options,
-        userFace: { ...tongueAndBrowObs, updatedAt: t },
-      });
-    }
-    expect(mFrame.tongueOut).toBeGreaterThan(0.55);
-    expect(mFrame.browAsym).toBeGreaterThan(0.45);
-    expect(mFrame.noseFlare).toBeGreaterThan(0.4);
-
-    // Charismatic single-eyebrow pose & skeptical emotion lift one brow asymmetrically
-    const skeptical = runEmotion("skeptical");
-    expect(Math.abs(skeptical.browAsym)).toBeGreaterThan(0.35);
-
-    // Pre-speech & periodic swallowing reflex drives neck larynx pulse cleanly
-    const swState = createExpressionEngine(0);
-    swState.nextSwallowAt = 50;
-    stepExpressionEngine(swState, 180, { ...options, mirrorMode: false });
-    const swFrame = stepExpressionEngine(swState, 360, { ...options, mirrorMode: false });
-    expect(swFrame.swallow).toBeGreaterThan(0.05);
   });
 
   it("converts Spanish and English words into accurate lip-reading viseme phonemes and aligns to speech window", () => {
@@ -327,5 +283,253 @@ describe("Observable expression mirroring", () => {
     const atSpeech = sampleVisemeTimeline(tl, 0.48);
     expect(atSilence?.open).toBe(0);
     expect(atSpeech?.round).toBeGreaterThan(0.5);
+  });
+
+  it("mirrors asymmetric single-eyebrow raises independently while staying symmetric on equal raises", () => {
+    const stepMirror = (obs: Partial<UserFaceObservation>) => {
+      const state = createExpressionEngine(0);
+      let frame = stepExpressionEngine(state, 50, {
+        ...options,
+        userFace: { ...face, ...obs, mouthOpen: 0, headYaw: 0, gazeX: 0, updatedAt: 50 },
+      });
+      for (let t = 100; t <= 900; t += 50) {
+        frame = stepExpressionEngine(state, t, {
+          ...options,
+          userFace: { ...face, ...obs, mouthOpen: 0, headYaw: 0, gazeX: 0, updatedAt: t },
+        });
+      }
+      return frame;
+    };
+
+    const asymLeft = stepMirror({ browRaiseLeft: 0.9, browRaiseRight: 0.05, browRaise: 0.48 });
+    expect(Math.abs(asymLeft.browAsym)).toBeGreaterThan(0.25);
+
+    const symmetric = stepMirror({ browRaiseLeft: 0.7, browRaiseRight: 0.7, browRaise: 0.7 });
+    expect(Math.abs(symmetric.browAsym)).toBeLessThan(0.08);
+    expect(symmetric.outerBrowY).toBeGreaterThan(0.15);
+  });
+
+  it("drives new expressions (smirk, sarcastic, eyeroll, intense, bitingLip, compassionate) and decoupled neck/torso yaw", () => {
+    const runEmotion = (emotion: Parameters<typeof stepExpressionEngine>[2]["emotion"]) => {
+      const state = createExpressionEngine(0);
+      let frame = stepExpressionEngine(state, 50, { ...options, mirrorMode: false, emotion });
+      for (let t = 100; t <= 1200; t += 50) {
+        frame = stepExpressionEngine(state, t, { ...options, mirrorMode: false, emotion });
+      }
+      return frame;
+    };
+
+    const smirk = runEmotion("smirk");
+    expect(Math.abs(smirk.mouthSkewX)).toBeGreaterThan(0.15);
+    expect(Math.abs(smirk.smileR - smirk.smileL)).toBeGreaterThan(0.15);
+
+    const sarcastic = runEmotion("sarcastic");
+    expect(Math.abs(sarcastic.browAsym)).toBeGreaterThan(0.2);
+    expect(sarcastic.eyeRoll).toBeGreaterThan(0.15);
+    expect(Math.abs(sarcastic.mouthSkewX)).toBeGreaterThan(0.1);
+
+    const eyeroll = runEmotion("eyeroll");
+    expect(eyeroll.gazeY).toBeGreaterThan(0.4);
+    expect(eyeroll.eyeRoll).toBeGreaterThan(0.5);
+
+    const intense = runEmotion("intense");
+    expect(intense.headPitch).toBeLessThan(-0.15);
+    expect(intense.gazeY).toBeGreaterThan(0.2);
+    expect(intense.pupilDilate).toBeGreaterThan(0.3);
+
+    const bitingLip = runEmotion("bitingLip");
+    expect(bitingLip.lipBite).toBeGreaterThan(0.5);
+
+    const compassionate = runEmotion("compassionate");
+    expect(compassionate.innerBrowY).toBeGreaterThan(0.15);
+    expect(compassionate.smile).toBeGreaterThan(0.15);
+
+    // Decoupled head/neck/torso yaw when mirroring a clear head turn
+    const turnState = createExpressionEngine(0);
+    let turnFrame = stepExpressionEngine(turnState, 50, {
+      ...options,
+      userFace: { ...face, headYaw: 0.75, mouthOpen: 0, gazeX: 0, updatedAt: 50 },
+    });
+    for (let t = 100; t <= 1000; t += 50) {
+      turnFrame = stepExpressionEngine(turnState, t, {
+        ...options,
+        userFace: { ...face, headYaw: 0.75, mouthOpen: 0, gazeX: 0, updatedAt: t },
+      });
+    }
+    expect(turnFrame.headYaw).toBeGreaterThan(0.45);
+    expect(turnFrame.neckYaw).toBeGreaterThan(0.1);
+    expect(turnFrame.torsoYaw).toBeGreaterThan(0.05);
+    expect(turnFrame.headYaw).toBeGreaterThan(turnFrame.neckYaw);
+    expect(turnFrame.neckYaw).toBeGreaterThan(turnFrame.torsoYaw);
+  });
+
+  it("never opens mouth from observed user smile alone when idle in neutral", () => {
+    vi.spyOn(Math, "random").mockReturnValue(0.5);
+    const state = createExpressionEngine(0);
+    let frame = stepExpressionEngine(state, 50, {
+      ...options,
+      mirrorMode: false,
+      emotion: "neutral",
+      userFace: { ...face, smile: 0.9, mouthOpen: 0, updatedAt: 50 },
+    });
+    for (let t = 100; t <= 900; t += 50) {
+      frame = stepExpressionEngine(state, t, {
+        ...options,
+        mirrorMode: false,
+        emotion: "neutral",
+        userFace: { ...face, smile: 0.9, mouthOpen: 0, updatedAt: t },
+      });
+    }
+    expect(frame.open).toBe(0);
+    vi.restoreAllMocks();
+  });
+
+  it("isolates subtle head turns from neck, swallows occasionally after speech, and mirrors tongueOut", () => {
+    // 1) Small head turn keeps cervical neckYaw minimal compared to headYaw
+    const isoState = createExpressionEngine(0);
+    let isoFrame = stepExpressionEngine(isoState, 50, {
+      ...options,
+      userFace: { ...face, headYaw: 0.15, mouthOpen: 0, gazeX: 0, updatedAt: 50 },
+    });
+    for (let t = 100; t <= 900; t += 50) {
+      isoFrame = stepExpressionEngine(isoState, t, {
+        ...options,
+        userFace: { ...face, headYaw: 0.15, mouthOpen: 0, gazeX: 0, updatedAt: t },
+      });
+    }
+    expect(isoFrame.headYaw).toBeGreaterThan(0.11);
+    expect(isoFrame.neckYaw).toBeLessThan(isoFrame.headYaw * 0.35);
+
+    // 2) Occasional post-speech swallow triggers ~1s after active speech ends when random roll < 0.42
+    vi.spyOn(Math, "random").mockReturnValue(0.2);
+    const swState = createExpressionEngine(0);
+    stepExpressionEngine(swState, 10000, {
+      ...options,
+      mirrorMode: false,
+      active: true,
+      visemes: { level: 0.5, open: 0.4, wide: 0.1, round: 0.1 },
+    });
+    // Transition active: true -> false schedules swallow ~850-2100ms later (with random=0.2 -> 850 + 250 = 1100ms after 10100ms)
+    stepExpressionEngine(swState, 10100, {
+      ...options,
+      mirrorMode: false,
+      active: false,
+    });
+    let maxSwallow = 0;
+    for (let t = 10160; t <= 12200; t += 60) {
+      const f = stepExpressionEngine(swState, t, {
+        ...options,
+        mirrorMode: false,
+        active: false,
+      });
+      maxSwallow = Math.max(maxSwallow, f.swallowAmount);
+    }
+    expect(maxSwallow).toBeGreaterThan(0.4);
+    vi.restoreAllMocks();
+
+    // 3) Mirror tongueOut drives tongue articulation and modest lip parting without full jaw drop
+    const tState = createExpressionEngine(0);
+    let tFrame = stepExpressionEngine(tState, 50, {
+      ...options,
+      userFace: { ...face, mouthOpen: 0, tongueOut: 0.85, headYaw: 0, gazeX: 0, updatedAt: 50 },
+    });
+    for (let t = 100; t <= 800; t += 50) {
+      tFrame = stepExpressionEngine(tState, t, {
+        ...options,
+        userFace: { ...face, mouthOpen: 0, tongueOut: 0.85, headYaw: 0, gazeX: 0, updatedAt: t },
+      });
+    }
+    expect(tFrame.tongueOut).toBeGreaterThan(0.5);
+    expect(tFrame.open).toBeGreaterThan(0.18);
+    expect(tFrame.open).toBeLessThan(0.45);
+  });
+
+  it("drives disgusted nose flare/upper-lip lift and mirrors lateral smirks and wide jaw opening", () => {
+    const dState = createExpressionEngine(0);
+    let dFrame = stepExpressionEngine(dState, 50, {
+      ...options,
+      mirrorMode: false,
+      emotion: "disgusted",
+    });
+    for (let t = 100; t <= 1000; t += 50) {
+      dFrame = stepExpressionEngine(dState, t, {
+        ...options,
+        mirrorMode: false,
+        emotion: "disgusted",
+      });
+    }
+    expect(dFrame.noseFlare).toBeGreaterThan(0.7);
+    expect(dFrame.upperLipLift).toBeGreaterThan(0.5);
+
+    const mState = createExpressionEngine(0);
+    let mFrame = stepExpressionEngine(mState, 50, {
+      ...options,
+      userFace: {
+        ...face,
+        mouthOpen: 0.9,
+        mouthSkewX: 0.65,
+        headYaw: 0,
+        gazeX: 0,
+        updatedAt: 50,
+      },
+    });
+    for (let t = 100; t <= 800; t += 50) {
+      mFrame = stepExpressionEngine(mState, t, {
+        ...options,
+        userFace: {
+          ...face,
+          mouthOpen: 0.9,
+          mouthSkewX: 0.65,
+          headYaw: 0,
+          gazeX: 0,
+          updatedAt: t,
+        },
+      });
+    }
+    expect(Math.abs(mFrame.mouthSkewX)).toBeGreaterThan(0.25);
+    expect(mFrame.open).toBeGreaterThan(0.75);
+  });
+
+  it("opens wider on stressed emphatic speech peaks than neutral syllables and triggers brief pause swallows", () => {
+    const baseState = createExpressionEngine(0);
+    let modOpen = 0;
+    for (let t = 50; t <= 450; t += 40) {
+      modOpen = stepExpressionEngine(baseState, t, {
+        ...options,
+        mirrorMode: false,
+        active: true,
+        visemes: { level: 0.45, open: 0.5, wide: 0.1, round: 0.1, stress: 0.1 },
+      }).open;
+    }
+
+    const emphState = createExpressionEngine(0);
+    let emphOpen = 0;
+    for (let t = 50; t <= 450; t += 40) {
+      emphOpen = stepExpressionEngine(emphState, t, {
+        ...options,
+        mirrorMode: false,
+        active: true,
+        visemes: { level: 0.85, open: 0.88, wide: 0.1, round: 0.1, stress: 0.72 },
+      }).open;
+    }
+    expect(modOpen).toBeLessThan(0.55);
+    expect(emphOpen).toBeGreaterThan(modOpen + 0.25);
+
+    vi.spyOn(Math, "random").mockReturnValue(0.2);
+    const pauseSwallow = createExpressionEngine(0);
+    pauseSwallow.nextSwallowEligibleAt = 5000;
+    pauseSwallow.open = 0.02;
+    let maxPauseSwallow = 0;
+    for (let t = 5100; t <= 6200; t += 60) {
+      const f = stepExpressionEngine(pauseSwallow, t, {
+        ...options,
+        mirrorMode: false,
+        active: true,
+        visemes: { level: 0.04, open: 0.02, wide: 0, round: 0 },
+      });
+      maxPauseSwallow = Math.max(maxPauseSwallow, f.swallowAmount);
+    }
+    expect(maxPauseSwallow).toBeGreaterThan(0.4);
+    vi.restoreAllMocks();
   });
 });

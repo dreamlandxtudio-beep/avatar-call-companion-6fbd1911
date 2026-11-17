@@ -33,17 +33,17 @@ import { speak, unlockAudio } from "@/lib/voice";
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
-      { title: "YUME — personajes de IA, anime y videollamadas" },
+      { title: "YUME — personajes realistas de IA y videollamadas" },
       {
         name: "description",
         content:
-          "Chatea y haz videollamadas en vivo con personajes de IA, anime, rol y retratos realistas.",
+          "Chatea y haz videollamadas en vivo con personajes de IA fotorrealistas en tiempo real.",
       },
-      { property: "og:title", content: "YUME — personajes de IA, anime y videollamadas" },
+      { property: "og:title", content: "YUME — personajes realistas de IA y videollamadas" },
       {
         property: "og:description",
         content:
-          "Conversaciones divertidas, rol, anime y videollamadas con personajes de IA en tiempo real.",
+          "Conversaciones reales y videollamadas con personajes de IA fotorrealistas en tiempo real.",
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
@@ -52,7 +52,7 @@ export const Route = createFileRoute("/")({
   component: Home,
 });
 
-type FilterMode = "all" | "anime" | "realistas" | "rol" | "creativa" | "custom";
+type FilterMode = "all" | "realistas" | "creativa" | "custom";
 
 function Home() {
   const p = useProfile();
@@ -73,10 +73,7 @@ function Home() {
         .toLowerCase()
         .includes(query.toLowerCase());
     if (!matchesQuery) return false;
-    if (filter === "anime") return character.tags.includes("Anime");
     if (filter === "realistas") return character.tags.includes("Realistas");
-    if (filter === "rol")
-      return character.tags.includes("Rol") || character.tags.includes("Misterio");
     if (filter === "creativa") return character.tags.includes("Creativa");
     if (filter === "custom") return !!character.isCustom;
     return true;
@@ -84,9 +81,7 @@ function Home() {
 
   const filterOptions: { id: FilterMode; label: string }[] = [
     { id: "all", label: "Para ti" },
-    { id: "anime", label: "Anime" },
     { id: "realistas", label: "Realistas" },
-    { id: "rol", label: "Rol y aventura" },
     { id: "creativa", label: "Creativa" },
     ...(customChars.length > 0 ? [{ id: "custom" as const, label: "Mis personajes" }] : []),
   ];
@@ -119,7 +114,7 @@ function Home() {
               <Search className="h-4 w-4 shrink-0 text-muted-foreground" />
               <input
                 aria-label="Buscar personajes"
-                placeholder="Buscar personajes, anime, rol…"
+                placeholder="Buscar personajes realistas…"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 className="min-w-0 w-full bg-transparent text-sm font-semibold text-foreground outline-none placeholder:font-semibold placeholder:text-muted-foreground"
