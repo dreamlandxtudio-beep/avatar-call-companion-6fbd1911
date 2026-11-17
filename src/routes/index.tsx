@@ -223,12 +223,12 @@ function Home() {
 
           <div className="relative min-h-[240px] overflow-hidden rounded-2xl border border-border bg-background sm:min-h-[290px]">
             <img
-              src={p.avatar}
+              src={p.avatar ?? "/avatars/default.jpg"}
               alt={p.name}
               onError={(e) => {
                 const imgEl = e.currentTarget;
-                if (imgEl.dataset.fallbackApplied) return;
-                imgEl.dataset.fallbackApplied = "1";
+                if (imgEl.dataset["fallbackApplied"]) return;
+                imgEl.dataset["fallbackApplied"] = "1";
                 imgEl.src = "/avatars/default.jpg";
               }}
               className="h-full max-h-[320px] w-full object-cover object-[50%_22%]"
@@ -337,8 +337,8 @@ function Home() {
                       alt={character.name}
                       onError={(e) => {
                         const imgEl = e.currentTarget;
-                        if (imgEl.dataset.fallbackApplied) return;
-                        imgEl.dataset.fallbackApplied = "1";
+                        if (imgEl.dataset["fallbackApplied"]) return;
+                        imgEl.dataset["fallbackApplied"] = "1";
                         imgEl.src = "/avatars/default.jpg";
                       }}
                       className="character-cover transition-transform duration-300 group-hover:scale-[1.03]"

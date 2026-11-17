@@ -124,6 +124,7 @@ export async function handleApiTts(request: Request): Promise<Response> {
       language?: string;
       style?: string;
       emotion?: string;
+      tempo?: string;
     };
     const text = String(body.text ?? "").trim();
     if (!text) {
@@ -139,6 +140,7 @@ export async function handleApiTts(request: Request): Promise<Response> {
       language: typeof body.language === "string" ? body.language : undefined,
       style: typeof body.style === "string" ? body.style : undefined,
       emotion: typeof body.emotion === "string" ? body.emotion : undefined,
+      tempo: typeof body.tempo === "string" ? body.tempo : undefined,
     });
 
     return new Response(new Uint8Array(wav), {

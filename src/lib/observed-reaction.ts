@@ -52,8 +52,11 @@ export type ObservedEmpathyFrame = {
   smile: number;
   browFurrow: number;
   browRaise: number;
+  browAsym: number;
   frown: number;
   eyeWide: number;
+  pucker: number;
+  mouthSkewX: number;
   noseScrunch: number;
   headYaw: number;
   headPitch: number;
@@ -67,6 +70,8 @@ export type ObservedEmpathyState = {
   pendingTriggerAt: number;
   holdUntil: number;
   cooldownUntil: number;
+  replayCooldownUntil: number;
+  history: Array<{ at: number; frame: ObservedEmpathyFrame }>;
   target: ObservedEmpathyFrame;
   current: ObservedEmpathyFrame;
 };
@@ -75,8 +80,11 @@ const ZERO_EMPATHY: ObservedEmpathyFrame = {
   smile: 0,
   browFurrow: 0,
   browRaise: 0,
+  browAsym: 0,
   frown: 0,
   eyeWide: 0,
+  pucker: 0,
+  mouthSkewX: 0,
   noseScrunch: 0,
   headYaw: 0,
   headPitch: 0,
@@ -91,23 +99,32 @@ export function createObservedEmpathy(now = 0): ObservedEmpathyState {
     pendingTriggerAt: 0,
     holdUntil: 0,
     cooldownUntil: 0,
+    replayCooldownUntil: 0,
+    history: [],
     target: { ...ZERO_EMPATHY },
     current: { ...ZERO_EMPATHY },
   };
 }
 
 /**
- * Subconsciously absorbs sustained fresh user camera behavior (posture, brows, smile, frown, nose scrunch)
- * after a natural delay so the avatar subtly echoes the user's vibe during and right after interactions,
- * without robotic 1:1 copying or treating facial movements as certain emotional proof.
+ * Subconsciously absorbs sustained fresh user camera behavior (posture, brows, pucker, wide eyes,
+ * smirk, smile, frown, nose scrunch) after a natural delay, and quietly echoes remembered movements
+ * from the last ~9s while speaking or listening, without robotic 1:1 copying or treating facial
+ * movements as emotional proof.
  */
 export function stepObservedEmpathy(
   st: ObservedEmpathyState,
   now: number,
   face?: UserFaceObservation,
+  ctx?: { active?: boolean; listening?: boolean },
 ): ObservedEmpathyFrame {
   const dt = Math.min(0.06, Math.max(0.004, (now - st.lastNow) * 0.001));
   st.lastNow = now;
+
+  // Prune short-lived motif history (> 9.2s)
+  if (st.history.length > 0) {
+    st.history = st.history.filter((h) => now >= h.at && now - h.at <= 9200);
+  }
 
   const fresh =
     !!face?.detected && now >= face.updatedAt && now - face.updatedAt <= OBSERVATION_MAX_AGE_MS;
@@ -122,14 +139,31 @@ export function stepObservedEmpathy(
       const furrowSig = Math.max(0, face.browFurrow - 0.25);
       const raiseSig = Math.max(0, face.browRaise - 0.28);
       const frownSig = Math.max(0, (face.mouthFrown ?? 0) - 0.24);
-      const wideSig = Math.max(0, (face.eyeWide ?? 0) - 0.26);
+      const wideSig = Math.max(0, (face.eyeWide ?? 0) - 0.22);
+      const puckerSig = Math.max(0, (face.mouthPucker ?? 0) - 0.26);
+      const skewSig = Math.max(0, Math.abs(face.mouthSkewX ?? 0) - 0.22);
       const noseSig = Math.max(0, (face.noseSneer ?? 0) - 0.24);
+      const bL = face.browRaiseLeft ?? face.browRaise;
+      const bR = face.browRaiseRight ?? face.browRaise;
+      const browAsymVal = Math.max(-0.5, Math.min(0.5, (bL - bR) * 0.65));
+      const asymSig = Math.max(0, Math.abs(browAsymVal) - 0.14);
       const poseMag = Math.max(
         Math.abs(face.headYaw) - 0.14,
         Math.abs(face.headPitch) - 0.14,
         Math.abs(face.headRoll ?? 0) - 0.06,
       );
-      const salient = Math.max(smileSig, furrowSig, raiseSig, frownSig, wideSig, noseSig, poseMag);
+      const salient = Math.max(
+        smileSig,
+        furrowSig,
+        raiseSig,
+        frownSig,
+        wideSig,
+        puckerSig,
+        skewSig,
+        noseSig,
+        asymSig,
+        poseMag,
+      );
 
       if (salient > 0.05) {
         st.sustainedMs = Math.min(2000, st.sustainedMs + Math.max(30, gap));
@@ -137,25 +171,56 @@ export function stepObservedEmpathy(
         st.sustainedMs = Math.max(0, st.sustainedMs - Math.max(30, gap) * 1.4);
       }
 
-      if (st.sustainedMs >= 600 && now >= st.cooldownUntil && !st.pendingTriggerAt) {
-        // Delayed subconscious mirroring snapshot (~360ms reaction latency, ~2.8s carryover)
-        st.pendingTriggerAt = now + 360;
-        st.cooldownUntil = now + 2600;
-        st.target = {
+      if (st.sustainedMs >= 600) {
+        const snapshot: ObservedEmpathyFrame = {
           smile: Math.min(0.32, Math.max(0, face.smile * 0.34)),
           browFurrow: Math.min(0.36, Math.max(0, face.browFurrow * 0.42)),
-          browRaise: Math.min(0.34, Math.max(0, face.browRaise * 0.36)),
+          browRaise: Math.min(0.36, Math.max(0, face.browRaise * 0.38)),
+          browAsym: Math.max(-0.34, Math.min(0.34, browAsymVal * 0.58)),
           frown: Math.min(0.3, Math.max(0, (face.mouthFrown ?? 0) * 0.38)),
-          eyeWide: Math.min(0.28, Math.max(0, (face.eyeWide ?? 0) * 0.34)),
+          eyeWide: Math.min(0.34, Math.max(0, (face.eyeWide ?? 0) * 0.44)),
+          pucker: Math.min(0.32, Math.max(0, (face.mouthPucker ?? 0) * 0.42)),
+          mouthSkewX: Math.max(-0.3, Math.min(0.3, (face.mouthSkewX ?? 0) * 0.38)),
           noseScrunch: Math.min(0.32, Math.max(0, (face.noseSneer ?? 0) * 0.4)),
-          headYaw: Math.max(-0.28, Math.min(0.28, face.headYaw * 0.34)),
-          headPitch: Math.max(-0.24, Math.min(0.24, face.headPitch * 0.32)),
-          headRoll: Math.max(-0.06, Math.min(0.06, (face.headRoll ?? 0) * 0.22)),
+          headYaw: Math.max(-0.3, Math.min(0.3, face.headYaw * 0.36)),
+          headPitch: Math.max(-0.24, Math.min(0.24, face.headPitch * 0.34)),
+          headRoll: Math.max(-0.07, Math.min(0.07, (face.headRoll ?? 0) * 0.26)),
         };
+
+        const lastHist = st.history[st.history.length - 1];
+        if (!lastHist || now - lastHist.at >= 450) {
+          st.history.push({ at: now, frame: snapshot });
+          if (st.history.length > 16) st.history.shift();
+        }
+
+        if (now >= st.cooldownUntil && !st.pendingTriggerAt) {
+          // Delayed subconscious mirroring snapshot (~360ms reaction latency, ~2.9s carryover)
+          st.pendingTriggerAt = now + 360;
+          st.cooldownUntil = now + 2600;
+          st.target = snapshot;
+        }
       }
     }
   } else if (!fresh) {
     st.sustainedMs = 0;
+  }
+
+  // Secretly echo a prior sustained user gesture from short-term memory while avatar is speaking/conversing
+  if (
+    (ctx?.active || ctx?.listening) &&
+    !st.pendingTriggerAt &&
+    now >= st.holdUntil &&
+    now >= st.cooldownUntil &&
+    now >= st.replayCooldownUntil &&
+    st.history.length > 0
+  ) {
+    const candidates = st.history.filter((h) => now - h.at >= 700 && now - h.at <= 9000);
+    if (candidates.length > 0) {
+      const chosen = candidates[candidates.length - 1]!;
+      st.target = { ...chosen.frame };
+      st.pendingTriggerAt = now + 240;
+      st.replayCooldownUntil = now + 4200;
+    }
   }
 
   if (st.pendingTriggerAt && now >= st.pendingTriggerAt) {

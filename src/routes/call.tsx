@@ -60,6 +60,7 @@ import {
 } from "@/lib/userCamera";
 import { Button } from "@/components/ui/button";
 import { AnimatedAvatar } from "@/components/AnimatedAvatar";
+import { UserFaceMeshOverlay } from "@/components/UserFaceMeshOverlay";
 import { AvatarImg } from "@/components/AvatarImg";
 
 export const Route = createFileRoute("/call")({
@@ -79,7 +80,7 @@ export const Route = createFileRoute("/call")({
   component: Call,
 });
 
-type Phase = "ringing" | "listening" | "speaking" | "paused";
+type Phase = "ringing" | "listening" | "thinking" | "speaking" | "paused";
 type ListenStage = "listening" | "speech" | "transcribing";
 
 function micErrorText(code: string) {
@@ -93,6 +94,37 @@ function micErrorText(code: string) {
     return "No se detectó micrófono disponible. Puedes escribir para hablar.";
   }
   return "Micrófono no disponible por ahora. Puedes escribir o reintentar.";
+}
+
+const COMPLEX_TOPIC_RE =
+  /\b(dif[ií]cil|complicad[oa]|problema|dolor|duelo|perd[oó]n|confes|secret|miedo|ansiedad|culpa|verdad|triste|enferm|muri[oó]|ruptura|te amo|en serio|explicar|analizar|estrategia|responsabilidad|decisi[oó]n|trauma|presi[oó]n|serio|grave|honest)\b/i;
+
+function computeTopicComplexity(
+  userText: string,
+  replyText: string,
+  emotion: AvatarEmotion,
+): number {
+  const combined = `${userText} ${replyText}`;
+  let score = 0;
+  if (COMPLEX_TOPIC_RE.test(combined)) score += 0.48;
+  if (combined.length > 140) score += 0.22;
+  else if (combined.length > 85) score += 0.1;
+  if (
+    emotion === "sad" ||
+    emotion === "crying" ||
+    emotion === "heartbroken" ||
+    emotion === "nervous" ||
+    emotion === "fear" ||
+    emotion === "sweating" ||
+    emotion === "intense" ||
+    emotion === "angry" ||
+    emotion === "furious" ||
+    emotion === "compassionate" ||
+    emotion === "bitingLip"
+  ) {
+    score += 0.35;
+  }
+  return Math.max(0, Math.min(1, score));
 }
 
 function Call() {
@@ -117,6 +149,7 @@ function Call() {
   const [showMesh, setShowMesh] = useState(false);
   const [userFace, setUserFace] = useState<UserFaceObservation | undefined>(undefined);
   const [aiEmotion, setAiEmotion] = useState<AvatarEmotion>("neutral");
+  const [topicComplexity, setTopicComplexity] = useState(0);
 
   const alive = useRef(true);
   const callTokenRef = useRef(0);
@@ -127,6 +160,10 @@ function Call() {
   const camStreamRef = useRef<MediaStream | null>(null);
   const camRequestRef = useRef<Promise<boolean> | null>(null);
   const userFaceRef = useRef<UserFaceObservation | undefined>(undefined);
+  const includeMeshRef = useRef(false);
+  includeMeshRef.current = inCallMirror && showMesh;
+  const inCallMirrorRef = useRef(false);
+  inCallMirrorRef.current = inCallMirror;
   const recentUserLaughRef = useRef(0);
   const lastVocalCueAtRef = useRef(0);
   const emotionTimersRef = useRef<Array<ReturnType<typeof setTimeout>>>([]);
@@ -196,12 +233,14 @@ function Call() {
       const tick = (now: number) => {
         if (cancel) return;
         raf = requestAnimationFrame(tick);
-        if (now - lastAnalyze < 85) return;
+        const fastMirror = inCallMirrorRef.current || includeMeshRef.current;
+        if (now - lastAnalyze < (fastMirror ? 34 : 80)) return;
         lastAnalyze = now;
-        const obs = analyzeUserVideoFrame(video, now);
+        const withMesh = includeMeshRef.current;
+        const obs = analyzeUserVideoFrame(video, now, { includeMesh: withMesh });
         if (!obs) return;
         userFaceRef.current = obs;
-        if (now - lastUiSync >= 140) {
+        if (inCallMirrorRef.current || withMesh || now - lastUiSync >= 140) {
           lastUiSync = now;
           setUserFace(obs);
         }
@@ -338,6 +377,7 @@ function Call() {
 
   const respond = async (heard: string, token: number) => {
     addMessage({ role: "user", content: heard });
+    setPhase("thinking");
     let r = "";
     let em: AvatarEmotion = "neutral";
     let explicitTimeline: SpeechEmotionBeat[] | undefined;
@@ -380,6 +420,7 @@ function Call() {
     if (!isCallValid(token)) return;
     addMessage({ role: "assistant", content: r });
     setCaption(r);
+    setTopicComplexity(computeTopicComplexity(heard, r, em));
     const beats = deriveSpeechEmotionTimeline(r, em, explicitTimeline);
     setAiEmotion(beats[0]?.emotion ?? em);
     setPhase("speaking");
@@ -707,6 +748,7 @@ function Call() {
     : {
         ringing: "Conectando…",
         listening: listenLabel,
+        thinking: "Pensando…",
         speaking: "Hablando",
         paused: muted ? "Micrófono apagado" : "Modo texto",
       }[phase];
@@ -860,13 +902,21 @@ function Call() {
             name={p.name}
             active={phase === "speaking"}
             emotion={aiEmotion}
-            listening={phase === "listening"}
+            listening={phase === "listening" && listenStage !== "transcribing"}
+            thinking={
+              phase === "thinking" || (phase === "listening" && listenStage === "transcribing")
+            }
+            userSpeaking={
+              (phase === "listening" && (listenStage === "speech" || micVol > 0.08)) ||
+              (phase === "paused" && typed.trim().length > 0)
+            }
             showMesh={showMesh}
             mirrorMode={inCallMirror}
             engine={p.avatarEngine ?? "mediapipe-mesh"}
             liveAvatarUrl={p.liveAvatarUrl}
             localOnly={p.localOnly}
             blurredBackground={p.blurredBackground}
+            topicComplexity={topicComplexity}
             fit="contain"
             userFace={userFace}
             className="h-full w-full"
@@ -894,6 +944,14 @@ function Call() {
                   void e.currentTarget.play().catch(() => {});
                 }}
                 className="h-full w-full -scale-x-100 object-cover"
+              />
+              <UserFaceMeshOverlay
+                meshPoints={userFace?.meshPoints}
+                visible={camActive && inCallMirror && showMesh && !!userFace?.detected}
+                videoSize={{
+                  width: userVideoRef.current?.videoWidth || 640,
+                  height: userVideoRef.current?.videoHeight || 480,
+                }}
               />
             </div>
           )}

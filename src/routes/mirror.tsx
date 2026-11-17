@@ -4,6 +4,7 @@ import {
   ArrowLeft,
   Camera,
   CameraOff,
+  Droplets,
   ScanFace,
   SlidersHorizontal,
   Volume2,
@@ -11,6 +12,7 @@ import {
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { AnimatedAvatar } from "@/components/AnimatedAvatar";
+import { UserFaceMeshOverlay } from "@/components/UserFaceMeshOverlay";
 import { Button } from "@/components/ui/button";
 import { AVATAR_EXPRESSIONS, type AvatarEmotion } from "@/lib/ai";
 import { setProfile, useProfile } from "@/lib/store";
@@ -75,6 +77,12 @@ function Mirror() {
   const [speakingTest, setSpeakingTest] = useState(false);
   const [pose, setPose] = useState<AvatarEmotion>("neutral");
   const [strength, setStrength] = useState(0.8);
+  const [swallowSignal, setSwallowSignal] = useState<{ seq: number; strength: number } | undefined>(
+    undefined,
+  );
+  const triggerSwallow = (swStrength: number) => {
+    setSwallowSignal((prev) => ({ seq: (prev?.seq ?? 0) + 1, strength: swStrength }));
+  };
   const stop = () => {
     generation.current++;
     stopUserCamera(stream.current);
@@ -136,14 +144,14 @@ function Mirror() {
     let last = 0;
     const tick = (now: number) => {
       raf = requestAnimationFrame(tick);
-      if (document.hidden || now - last < 80 || !video.current) return;
+      if (document.hidden || now - last < 33 || !video.current) return;
       last = now;
-      const observation = analyzeUserVideoFrame(video.current, now);
+      const observation = analyzeUserVideoFrame(video.current, now, { includeMesh: showMesh });
       if (observation) setFace(observation);
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [running]);
+  }, [running, showMesh]);
   const speechGen = useRef(0);
   const toggleSpeechTest = async () => {
     if (speakingTest) {
@@ -230,6 +238,14 @@ function Mirror() {
               }}
               className="h-full w-full -scale-x-100 object-cover"
             />
+            <UserFaceMeshOverlay
+              meshPoints={face?.meshPoints}
+              visible={running && showMesh && !!face?.detected}
+              videoSize={{
+                width: video.current?.videoWidth || 640,
+                height: video.current?.videoHeight || 480,
+              }}
+            />
             {!running && !loading && (
               <div className="absolute inset-0 flex items-center justify-center text-muted-foreground">
                 <Camera className="h-10 w-10" />
@@ -258,6 +274,7 @@ function Mirror() {
               animationStyle="human"
               userFace={adjusted}
               mirrorMode={mode === "mirror"}
+              swallowSignal={swallowSignal}
               fit="cover"
               className="h-full w-full"
             />
@@ -284,6 +301,24 @@ function Mirror() {
         >
           {speakingTest ? <VolumeX /> : <Volume2 />}
           {speakingTest ? "Detener voz" : "Probar habla"}
+        </Button>
+        <Button
+          variant="outline"
+          type="button"
+          onClick={() => triggerSwallow(1.0)}
+          className="h-11 whitespace-nowrap shrink-0 rounded-xl"
+        >
+          <Droplets />
+          Tragar saliva
+        </Button>
+        <Button
+          variant="outline"
+          type="button"
+          onClick={() => triggerSwallow(1.45)}
+          className="h-11 whitespace-nowrap shrink-0 rounded-xl"
+        >
+          <Droplets />
+          Tragar fuerte
         </Button>
         <div
           className="flex gap-1 rounded-lg border border-border bg-card p-1"

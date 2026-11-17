@@ -1,8 +1,13 @@
 /** Photo warping cannot reconstruct occluded geometry. Keep motion within the source's evidence. */
 export function mouthMotion(open: number, hasTeeth: boolean, restRatio: number) {
   const speech = Math.max(0, Math.min(1, open));
+  const baseScale = hasTeeth ? 0.86 : 0.9;
+  const opening =
+    speech <= 0.65
+      ? speech * baseScale
+      : Math.min(1, 0.65 * baseScale + (speech - 0.65) * ((1 - 0.65 * baseScale) / 0.35));
   return {
-    opening: speech * (hasTeeth ? 0.86 : 0.9),
+    opening,
     closure: Math.max(0, Math.min(0.35, restRatio)) * (1 - Math.min(1, speech * 4)),
     useOriginalTeeth: hasTeeth,
     syntheticTeeth: true,

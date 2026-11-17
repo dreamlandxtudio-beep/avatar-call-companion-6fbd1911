@@ -244,94 +244,127 @@ function normalizeVoiceName(raw?: string): string {
   return "Kore";
 }
 
-function ttsStyleForEmotion(emotion: string | undefined, isEs: boolean, custom?: string): string {
+function ttsStyleForEmotion(
+  emotion: string | undefined,
+  isEs: boolean,
+  custom?: string,
+  tempo?: string,
+): string {
   if (custom?.trim()) return custom.trim();
-  if (isEs) {
+  const baseStyle = (() => {
+    if (isEs) {
+      switch (emotion) {
+        case "angry":
+          return "Voz humana real, molesta y firme en español natural";
+        case "furious":
+          return "Voz humana muy enojada, intensa y cortante en español natural";
+        case "disgusted":
+          return "Voz humana con desagrado y fastidio sutil en español natural";
+        case "skeptical":
+          return "Voz humana escéptica e incrédula en español natural";
+        case "laugh":
+          return "Voz humana riendo con alegría espontánea en español natural";
+        case "euphoric":
+          return "Voz humana entusiasmada, radiante y llena de energía en español natural";
+        case "happy":
+          return "Voz humana cálida, cercana y sonriente en español natural";
+        case "flirty":
+        case "blushing":
+          return "Voz humana cercana, dulce y ligeramente coqueta en español natural";
+        case "proud":
+          return "Voz humana segura y tranquila en español natural";
+        case "surprised":
+          return "Voz humana sorprendida y expresiva en español natural";
+        case "sad":
+        case "melancholic":
+          return "Voz humana suave, nostálgica y empática en español natural";
+        case "crying":
+        case "heartbroken":
+          return "Voz humana conmovida, quebrada y llorando suavemente en español natural";
+        case "fear":
+        case "nervous":
+        case "sweating":
+          return "Voz humana nerviosa, agitada y con respiraciones rápidas en español natural";
+        case "drunk":
+        case "high":
+        case "sleepy":
+          return "Voz humana muy relajada, pausada y somnolienta en español natural";
+        case "sick":
+        case "pain":
+          return "Voz humana cansada, débil y adolorida en español natural";
+        default:
+          return "Voz humana realista y conversacional en español natural";
+      }
+    }
     switch (emotion) {
       case "angry":
-        return "Voz humana real, molesta y firme en español natural";
+        return "Realistic firm angry human voice";
       case "furious":
-        return "Voz humana muy enojada, intensa y cortante en español natural";
+        return "Realistic intense furious human voice";
       case "disgusted":
-        return "Voz humana con desagrado y fastidio sutil en español natural";
+        return "Realistic disgusted skeptical human voice";
       case "skeptical":
-        return "Voz humana escéptica e incrédula en español natural";
+        return "Realistic skeptical curious human voice";
       case "laugh":
-        return "Voz humana riendo con alegría espontánea en español natural";
+        return "Realistic joyful laughing human voice";
       case "euphoric":
-        return "Voz humana entusiasmada, radiante y llena de energía en español natural";
+        return "Realistic excited euphoric human voice";
       case "happy":
-        return "Voz humana cálida, cercana y sonriente en español natural";
+        return "Realistic warm cheerful human voice";
       case "flirty":
       case "blushing":
-        return "Voz humana cercana, dulce y ligeramente coqueta en español natural";
+        return "Realistic warm affectionate playful human voice";
       case "proud":
-        return "Voz humana segura y tranquila en español natural";
+        return "Realistic confident calm human voice";
       case "surprised":
-        return "Voz humana sorprendida y expresiva en español natural";
+        return "Realistic surprised expressive human voice";
       case "sad":
       case "melancholic":
-        return "Voz humana suave, nostálgica y empática en español natural";
+        return "Realistic soft empathetic human voice";
       case "crying":
       case "heartbroken":
-        return "Voz humana conmovida, quebrada y llorando suavemente en español natural";
+        return "Realistic emotional tearful trembling human voice";
       case "fear":
       case "nervous":
       case "sweating":
-        return "Voz humana nerviosa, agitada y con respiraciones rápidas en español natural";
+        return "Realistic anxious nervous breathless human voice";
       case "drunk":
       case "high":
       case "sleepy":
-        return "Voz humana muy relajada, pausada y somnolienta en español natural";
+        return "Realistic drowsy slow relaxed human voice";
       case "sick":
       case "pain":
-        return "Voz humana cansada, débil y adolorida en español natural";
+        return "Realistic fatigued strained human voice";
       default:
-        return "Voz humana realista y conversacional en español natural";
+        return "Realistic natural conversational human voice";
     }
+  })();
+
+  if (tempo === "fast") {
+    return (
+      baseStyle +
+      (isEs
+        ? ", hablando con ritmo ágil, vivo y rápido"
+        : ", speaking at a brisk, lively, energetic fast pace")
+    );
   }
-  switch (emotion) {
-    case "angry":
-      return "Realistic firm angry human voice";
-    case "furious":
-      return "Realistic intense furious human voice";
-    case "disgusted":
-      return "Realistic disgusted skeptical human voice";
-    case "skeptical":
-      return "Realistic skeptical curious human voice";
-    case "laugh":
-      return "Realistic joyful laughing human voice";
-    case "euphoric":
-      return "Realistic excited euphoric human voice";
-    case "happy":
-      return "Realistic warm cheerful human voice";
-    case "flirty":
-    case "blushing":
-      return "Realistic warm affectionate playful human voice";
-    case "proud":
-      return "Realistic confident calm human voice";
-    case "surprised":
-      return "Realistic surprised expressive human voice";
-    case "sad":
-    case "melancholic":
-      return "Realistic soft empathetic human voice";
-    case "crying":
-    case "heartbroken":
-      return "Realistic emotional tearful trembling human voice";
-    case "fear":
-    case "nervous":
-    case "sweating":
-      return "Realistic anxious nervous breathless human voice";
-    case "drunk":
-    case "high":
-    case "sleepy":
-      return "Realistic drowsy slow relaxed human voice";
-    case "sick":
-    case "pain":
-      return "Realistic fatigued strained human voice";
-    default:
-      return "Realistic natural conversational human voice";
+  if (tempo === "brisk") {
+    return (
+      baseStyle +
+      (isEs
+        ? ", con ritmo conversacional dinámico y expresivo"
+        : ", at an engaging brisk conversational pace")
+    );
   }
+  if (tempo === "slow") {
+    return (
+      baseStyle +
+      (isEs
+        ? ", hablando despacio, con pausas suaves y ritmo calmado"
+        : ", speaking slowly and deliberately with unhurried pauses")
+    );
+  }
+  return baseStyle;
 }
 
 function ensureWavBuffer(raw: Buffer, mimeType?: string): Buffer {
@@ -364,6 +397,7 @@ export async function synthesizeSpeech(opts: {
   language?: string | undefined;
   style?: string | undefined;
   emotion?: string | undefined;
+  tempo?: string | undefined;
 }): Promise<Buffer> {
   const ai = getClient();
   const beta = getBetaClient();
@@ -371,7 +405,7 @@ export async function synthesizeSpeech(opts: {
   const primaryVoice = normalizeVoiceName(opts.voiceName);
   const fallbackVoice = CORE_ALIAS[primaryVoice] ?? "Kore";
 
-  const style = ttsStyleForEmotion(opts.emotion, isEs, opts.style);
+  const style = ttsStyleForEmotion(opts.emotion, isEs, opts.style, opts.tempo);
   const cleanText = opts.text.trim();
   const expressiveText =
     opts.emotion === "laugh" && !cleanText.includes("<laugh>") ? `<laugh> ${cleanText}` : cleanText;

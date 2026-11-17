@@ -61,6 +61,7 @@ uniform float uAspect;
 uniform float uOpen;
 uniform float uWide;
 uniform float uRound;
+uniform float uPucker;
 uniform float uLipPress;
 uniform float uLabiodental;
 uniform float uUpperLipLift;
@@ -69,6 +70,7 @@ uniform float uLipBite;
 uniform float uSmile;
 uniform float uSmileR;
 uniform float uSmileL;
+uniform float uSmileTeeth;
 uniform float uMouthSkewX;
 uniform float uCheekLift;
 uniform float uInnerBrowY;
@@ -94,6 +96,7 @@ uniform vec2 uHand0Delta;
 uniform vec2 uHand1Delta;
 uniform vec2 uHairDelta;
 uniform float uSwallow;
+uniform float uSwallowPhase;
 uniform vec2 uAdamAppleCoord;
 uniform float uIsBasePass;
 uniform float uPass;
@@ -107,6 +110,7 @@ out float vJawDropMouthW;
 out float vJawBoneDropMouthW;
 out vec2 vRigidMouth;
 out vec2 vFaceCoord;
+out float vHeadTurn;
 
 vec2 addAxisDelta(vec2 p, vec4 axis, vec2 deltaAspect, float aspect) {
   return p + vec2(
@@ -133,6 +137,7 @@ void main() {
     vJawBoneDropMouthW = 0.0;
     vRigidMouth = vec2(0.0);
     vFaceCoord = vec2(0.0);
+    vHeadTurn = 0.0;
     return;
   }
 
@@ -140,6 +145,7 @@ void main() {
   float headW = aHeadRig.x;
   float torsoW = aHeadRig.y;
   float jawW = aHeadRig.z;
+  float neckW = uPass < 1.5 ? aHandRig.z : 0.0;
   float side = aBrowRig.w;
 
   // Compute rest-frame normalized face coordinates for consistent dynamic expression effects
@@ -154,24 +160,24 @@ void main() {
   float browLift = clamp((aBrowRig.x * (uInnerBrowY + asym * 0.42) + aBrowRig.y * (uOuterBrowY + asym)) * 0.026, -0.030, 0.034) * uFaceH;
   float furrowDrop = aBrowRig.x * max(0.0, uInnerBrowPinch) * 0.015 * uFaceH;
   float browPinch = -side * aBrowRig.x * uInnerBrowPinch * 0.030 * uFaceW;
-  float orbitLift = aBrowRig.z * (uSquint * 0.010 - uEyeWide * 0.006) * uFaceH;
+  float orbitLift = aBrowRig.z * (uSquint * 0.016 - uEyeWide * 0.006) * uFaceH;
   p = addAxisDelta(p, uFaceAxis, vec2(browPinch, -(browLift - furrowDrop + orbitLift)), aspect);
 
-  // 2) Natural nostril flare & disgust upper-nose contraction
+  // 2) Subtle nostril breath only (keep nose bridge & contour completely anchored)
   p = addAxisDelta(
     p,
     uFaceAxis,
     vec2(
-      side * aFaceRig.w * max(0.0, uNoseFlare) * 0.009 * uFaceW,
-      -aFaceRig.w * max(0.0, uNoseFlare) * 0.0095 * uFaceH
+      side * aFaceRig.w * max(0.0, uNoseFlare) * 0.0032 * uFaceW,
+      -aFaceRig.w * max(0.0, uNoseFlare) * 0.0028 * uFaceH
     ),
     aspect
   );
 
-  // 3) Gentle zygomatic cheek lift preserving rounded oval cheekbones (no cat-cheek pinching)
+  // 3) Gentle zygomatic cheek lift preserving rounded oval cheekbones (stronger on true smiles/laughs)
   float sideSmile = mix(uSmileR, uSmileL, smoothstep(-0.35, 0.35, side));
-  float laughCheek = uCheekLift * 0.0105 + max(0.0, sideSmile) * 0.0065;
-  float cheekSpread = side * aFaceRig.z * (max(0.0, sideSmile) * 0.0032 + uCheekLift * 0.0025) * uFaceW;
+  float laughCheek = uCheekLift * 0.018 + max(0.0, sideSmile) * 0.014;
+  float cheekSpread = side * aFaceRig.z * (max(0.0, sideSmile) * 0.006 + uCheekLift * 0.004) * uFaceW;
   p = addAxisDelta(
     p,
     uFaceAxis,
@@ -179,29 +185,34 @@ void main() {
     aspect
   );
 
-  // 4) Independent upper/lower lip control, wide opening, side-to-side skew, lip-bite & mandible drop
+  // 4) Balanced mouth opening, pucker contraction ("besito"), closed/parted smile modes & parabolic jaw drop (zero neck pull)
   vec2 mouthRel = vec2((p.x - uMouthCenter.x) * aspect, p.y - uMouthCenter.y);
   float mSign = clamp(dot(mouthRel, uMouthAxis.xy) / max(0.01, uMouthW * 0.46), -1.0, 1.0);
   float localSmile = mix(uSmileR, uSmileL, smoothstep(-0.35, 0.35, mSign));
   float lipSealZone = 1.0 - smoothstep(uMouthW * 0.32, uMouthW * 0.86, length(mouthRel));
   float cornerTaper = 1.0 - 0.16 * pow(abs(mSign), 2.2);
   float centerArch = 1.0 - smoothstep(0.18, 0.92, abs(mSign));
-  float closedTeethPart = clamp((max(uSmileR, uSmileL) - 0.32) * 1.6, 0.0, 1.0) * (1.0 - smoothstep(0.06, 0.20, uOpen));
+  float closedTeethPart = uSmileTeeth * clamp((max(uSmileR, uSmileL) - 0.30) * 1.55, 0.0, 1.0) * (1.0 - smoothstep(0.06, 0.20, uOpen));
+
+  float kissPlumpUpper = aFaceRig.x * centerArch * uPucker * 0.007 * uMouthW * (1.0 - uOpen);
+  float kissPlumpLower = centerArch * (1.0 - aFaceRig.x) * jawW * uPucker * 0.006 * uFaceH * (1.0 - uOpen);
+  float puckerInward = -mSign * (aFaceRig.y * 0.80 + aFaceRig.x * 0.36 + (1.0 - aFaceRig.x) * jawW * 0.26) * (uPucker * 0.080 + uRound * 0.022) * uMouthW;
 
   float upperLift = aFaceRig.x * cornerTaper * (
-    uOpen * 0.015 + max(0.0, localSmile) * 0.016 + uUpperLipLift * 0.026 + closedTeethPart * 0.008 * centerArch + uRound * 0.005 - uLipPress * 0.009
-  ) * uMouthW;
-  float cornerWide = mSign * aFaceRig.y * (uWide * 0.019 + localSmile * 0.023 - uRound * 0.028 - uLipPress * 0.009) * uMouthW;
-  float cornerLift = abs(mSign) * aFaceRig.y * (localSmile * 0.023 + uWide * 0.005 - uRound * 0.006 + mSign * uMouthSkewX * 0.010) * uMouthW;
+    uOpen * 0.032 + max(0.0, localSmile) * 0.032 + uUpperLipLift * 0.030 + closedTeethPart * 0.011 * centerArch + uRound * 0.006 - uLipPress * 0.009
+  ) * uMouthW + kissPlumpUpper;
+  float cornerWide = mSign * aFaceRig.y * (uWide * 0.022 + localSmile * 0.056 - uRound * 0.024 - uLipPress * 0.010) * uMouthW + puckerInward;
+  float cornerLift = abs(mSign) * aFaceRig.y * (localSmile * 0.062 + uWide * 0.008 - uRound * 0.008 - uPucker * 0.004 + mSign * uMouthSkewX * 0.012) * uMouthW;
   float cornerJawFollow = aFaceRig.y * (1.0 - aFaceRig.x) * (uOpen * 0.010 + uLowerLipDrop * 0.008) * uFaceH;
-  float mouthLatSkew = uMouthSkewX * 0.115 * uMouthW * clamp(aFaceRig.y * 1.05 + aFaceRig.x * 0.85 + jawW * 0.55, 0.0, 1.25);
+  float mouthLatSkew = uMouthSkewX * 0.110 * uMouthW * clamp(aFaceRig.y * 1.05 + aFaceRig.x * 0.85 + jawW * 0.45, 0.0, 1.2);
 
-  float jawBoneDrop = uOpen * 0.075 * uFaceH;
-  float jawOpenDrop = (uOpen * 0.078 + uLowerLipDrop * 0.028) * uFaceH;
-  float lowerSmilePart = closedTeethPart * centerArch * (1.0 - aFaceRig.x) * 0.011 * uFaceH * jawW;
-  float jawPressSeal = -jawW * lipSealZone * (uLipPress * 0.009 + uLabiodental * 0.011 + uLipBite * 0.016) * uFaceH;
-  float jawDrop = jawOpenDrop * jawW + lowerSmilePart + jawPressSeal;
-  float jawInwardTuck = -mSign * jawW * (uRound * 0.005 + uLabiodental * 0.003 + uLipBite * 0.004) * uFaceW;
+  float wideBoost = smoothstep(0.42, 1.0, uOpen) * 0.028;
+  float jawBoneDrop = (uOpen * 0.076 + wideBoost) * uFaceH;
+  float jawOpenDrop = (uOpen * 0.074 + wideBoost + uLowerLipDrop * 0.024) * uFaceH;
+  float lowerSmilePart = closedTeethPart * centerArch * (1.0 - aFaceRig.x) * 0.013 * uFaceH * jawW;
+  float jawPressSeal = -jawW * lipSealZone * (uLipPress * 0.009 + uLabiodental * 0.011 + uLipBite * 0.015) * uFaceH;
+  float jawDrop = jawOpenDrop * jawW + lowerSmilePart + jawPressSeal + kissPlumpLower;
+  float jawInwardTuck = -mSign * jawW * (uOpen * 0.005 + uRound * 0.004 + uPucker * 0.008 + uLabiodental * 0.003 + uLipBite * 0.004) * uFaceW;
   p = addAxisDelta(
     p,
     uMouthAxis,
@@ -212,7 +223,7 @@ void main() {
     aspect
   );
 
-  // Cranial mouth coordinates & decoupled mandible bone drop so teeth stay anchored on the skull while lips slide over them
+  // Cranial mouth coordinates & decoupled mandible bone drop so teeth stay anchored cleanly inside the mouth
   vec2 postMouthRel = vec2((p.x - uMouthCenter.x) * aspect, p.y - uMouthCenter.y);
   vMouthPlane = vec2(
     dot(postMouthRel, uMouthAxis.xy) / max(0.01, uMouthW),
@@ -226,76 +237,129 @@ void main() {
     dot(rigidMouthRel, uMouthAxis.zw) / max(0.01, uMouthW)
   );
 
-  // 5) Decoupled cranium + cervical neck 3D rotation preserving full face shape (zero spaghetti stretching),
-  // subtle interior turn & realistic near-ear profile depth
-  float neckBand = smoothstep(0.06, 0.56, headW) * (1.0 - smoothstep(0.68, 0.96, headW));
-  float craniumCore = smoothstep(0.42, 0.96, headW);
+  // 5) Cohesive 3D head turn: entire cranium, top hair crown, lateral ear-side hair, ears, brows, nose, mouth & chin rotate as one unit
+  vHeadTurn = 0.0;
   if (headW > 0.001) {
-    vec2 skullPivot = mix(uNeckPivot, uFaceCenter, 0.38);
+    vec2 skullPivot = mix(uNeckPivot, uFaceCenter, 0.44);
     vec2 rel = vec2((p.x - skullPivot.x) * aspect, p.y - skullPivot.y);
-    float activeRoll = uHeadRoll * craniumCore + uNeckRoll * neckBand;
+    float activeRoll = uHeadRoll * headW;
     float cRoll = cos(activeRoll);
     float sRoll = sin(activeRoll);
     vec2 r = vec2(rel.x * cRoll - rel.y * sRoll, rel.x * sRoll + rel.y * cRoll);
 
-    float hx = clamp(vFaceCoord.x, -1.25, 1.25);
-    float hy = clamp(vFaceCoord.y, -1.25, 1.25);
-    float faceR = length(vec2(hx * 0.95, hy * 0.85));
-    float innerMask = 1.0 - smoothstep(0.28, 0.96, faceR);
+    float hx = clamp(vFaceCoord.x, -1.65, 1.65);
+    float hy = clamp(vFaceCoord.y, -1.65, 1.25);
+    float faceR = length(vec2(hx * 0.88, hy * 0.78));
+    float innerMask = 1.0 - smoothstep(0.32, 0.98, faceR);
+    float hairDomeMask = smoothstep(0.10, -1.12, hy) * (1.0 - smoothstep(1.02, 1.65, abs(hx)));
+    float templeHairMask = smoothstep(0.42, 1.18, abs(hx)) * smoothstep(0.58, -0.60, hy) * (1.0 - smoothstep(1.26, 1.65, abs(hx)));
+    float featureCohesion = max(innerMask, max(hairDomeMask * 0.96, templeHairMask * 0.92));
 
-    float noseBump = exp(-(hx * hx * 7.5 + hy * hy * 4.5)) * 0.065 * uFaceW;
-    float r2 = (hx * 0.32) * (hx * 0.32) + (hy * 0.26) * (hy * 0.26);
-    float skullZ = sqrt(max(0.16, 1.0 - min(0.84, r2))) * uFaceW * 0.34 + noseBump;
-    float pivotZ = uFaceW * 0.14;
+    float noseBump = exp(-(hx * hx * 9.0 + (hy - 0.06) * (hy - 0.06) * 5.2)) * 0.042 * uFaceW;
+    float browRidgeBump = exp(-(hx * hx * 3.0 + (hy + 0.34) * (hy + 0.34) * 16.0)) * 0.019 * uFaceW;
+    float mouthMalarBump = exp(-(hx * hx * 4.5 + (hy - 0.35) * (hy - 0.35) * 9.5)) * 0.022 * uFaceW;
+    float chinBump = exp(-(hx * hx * 6.5 + (hy - 0.80) * (hy - 0.80) * 10.5)) * 0.022 * uFaceW;
+    float crownBump = smoothstep(0.05, -1.22, hy) * (1.0 - smoothstep(0.82, 1.65, abs(hx))) * 0.056 * uFaceW;
+    float r2 = (hx * 0.25) * (hx * 0.25) + (hy * 0.21) * (hy * 0.21);
+    float lateralCyl = max(0.0, 1.0 - hx * hx * 0.20);
+    float skullZ = (sqrt(max(0.18, 1.0 - min(0.82, r2))) * 0.22 + lateralCyl * 0.060) * uFaceW + noseBump + browRidgeBump + mouthMalarBump + chinBump + crownBump;
+    float pivotZ = uFaceW * 0.16;
     float dz = skullZ - pivotZ;
 
-    float yawRad = clamp(uHeadRot.x * 0.24 * craniumCore + uNeckRot.x * 0.14 * neckBand, -0.22, 0.22) * headW;
-    float pitchRad = clamp(uHeadRot.y * 0.20 * craniumCore + uNeckRot.y * 0.10 * neckBand, -0.18, 0.18) * headW;
+    float yawRad = clamp(uHeadRot.x * 0.44, -0.46, 0.46) * headW;
+    float pitchRad = clamp(uHeadRot.y * 0.20, -0.20, 0.20) * headW;
 
     float cosY = cos(yawRad);
     float sinY = sin(yawRad);
-    // Shift interior features (nose, eyes, brows, mouth) only gently so features stay centered cleanly in the face oval
-    float rotX = r.x * mix(1.0, cosY, 0.08 * craniumCore) + dz * sinY * mix(0.10, 0.38, innerMask);
+    vHeadTurn = sinY * headW;
+    // Cohesive skull+top-hair shift from jaw/ears up through forehead and crown hair so upper hair clearly moves toward the turn
+    float carriageHeight = smoothstep(1.06, -0.28, vFaceCoord.y);
+    float topHairFollow = smoothstep(-0.12, -1.18, vFaceCoord.y) * (1.0 - smoothstep(1.08, 1.65, abs(hx)));
+    float neckCarriageShift = sinY * (0.088 * carriageHeight + 0.026 * topHairFollow) * uFaceW * headW;
+    float foreshorten = mix(1.0, cosY, 0.16 * headW);
+    float rotX = r.x * foreshorten + dz * sinY * mix(0.24, 0.44, featureCohesion) + neckCarriageShift;
     r.x = rotX;
-    r.y = r.y - dz * sin(pitchRad) * mix(0.16, 0.42, innerMask);
+    r.y = r.y - dz * sin(pitchRad) * mix(0.12, 0.28, max(innerMask, hairDomeMask * 0.65));
 
-    // Profile near-ear & outer-rim depth illusion: near ear opens outward & scales subtly larger while far ear tucks gently behind
-    float earZone = smoothstep(0.74, 1.08, abs(vFaceCoord.x)) *
-      smoothstep(-0.36, 0.00, vFaceCoord.y) *
-      (1.0 - smoothstep(0.28, 0.62, vFaceCoord.y)) * craniumCore;
-    float earNearness = -sign(vFaceCoord.x) * sinY;
-    float nearAmt = clamp(earNearness * 2.2, 0.0, 1.0);
-    float farAmt = clamp(-earNearness * 2.2, 0.0, 1.0);
-    float earShift = sign(vFaceCoord.x) * (nearAmt * 0.020 - farAmt * 0.012) * uFaceW * earZone;
-    float earScale = 1.0 + (nearAmt * 0.080 - farAmt * 0.050) * earZone;
-    vec2 earAnchor = vec2(sign(vFaceCoord.x) * uFaceW * 0.42, uFaceCenter.y - skullPivot.y);
+    // Coherent 3D ear + surrounding lateral hair compression/visibility
+    float earZone = smoothstep(0.66, 1.04, abs(vFaceCoord.x)) *
+      smoothstep(-0.76, -0.30, vFaceCoord.y) *
+      (1.0 - smoothstep(0.32, 0.68, vFaceCoord.y)) * headW;
+    float sideHairZone = smoothstep(0.56, 0.98, abs(vFaceCoord.x)) *
+      smoothstep(-1.22, -0.32, vFaceCoord.y) *
+      (1.0 - smoothstep(0.42, 0.86, vFaceCoord.y)) *
+      (1.0 - earZone * 0.55) * headW;
+    float latTurnNearness = -sign(vFaceCoord.x) * sinY;
+    float nearAmt = clamp(latTurnNearness * 2.6, 0.0, 1.0);
+    float farAmt = clamp(-latTurnNearness * 2.6, 0.0, 1.0);
+
+    float earShift = sign(vFaceCoord.x) * (nearAmt * 0.056 - farAmt * 0.052) * uFaceW * earZone;
+    float sideHairShift = sign(vFaceCoord.x) * (nearAmt * 0.032 - farAmt * 0.058) * uFaceW * sideHairZone;
+    float earScale = 1.0 + (nearAmt * 0.16 - farAmt * 0.28) * earZone;
+    float hairLatScale = 1.0 + (nearAmt * 0.06 - farAmt * 0.18) * sideHairZone;
+    vec2 earAnchor = vec2(sign(vFaceCoord.x) * uFaceW * 0.42, (uFaceCenter.y - uFaceH * 0.08) - skullPivot.y);
     r = mix(r, earAnchor + (r - earAnchor) * earScale, earZone);
+    vec2 hairAnchor = vec2(sign(vFaceCoord.x) * uFaceW * 0.46, r.y);
+    r.x = mix(r.x, hairAnchor.x + (r.x - hairAnchor.x) * hairLatScale, sideHairZone);
 
-    p.x = skullPivot.x + (r.x + earShift) / aspect + uHeadTranslate.x * headW;
+    p.x = skullPivot.x + (r.x + earShift + sideHairShift) / aspect + uHeadTranslate.x * headW;
     p.y = skullPivot.y + r.y + uHeadTranslate.y * headW;
   }
 
-  // 6) 5-point anatomical lowerNeck + bilateral trapezius + shoulders moving together symmetrically (never opposite deformation)
-  if (uPass < 1.5) {
-    float shoulderRidgeW = aHandRig.z;
-    float yokeW = clamp(max(torsoW, shoulderRidgeW) * (1.0 - craniumCore * 0.92), 0.0, 1.0);
-    float shrugShift = clamp(uShoulderShrug, -0.6, 1.0) * 0.010 * uFaceH;
-    float torsoYawShiftX = clamp(uTorsoYaw, -0.5, 0.5) * 0.011 * uFaceW * yokeW;
-    float hyoidY = exp(-pow((vFaceCoord.y - uAdamAppleCoord.y) / 0.24, 2.0));
-    float hyoidX = 1.0 - smoothstep(0.14, 0.44, abs(vFaceCoord.x - uAdamAppleCoord.x));
-    float hyoidBand = hyoidY * hyoidX;
-    float swallowLift = clamp(uSwallow, 0.0, 1.0) * hyoidBand * 0.0115 * uFaceH;
-    p.x += (uTorsoSwayX * 0.0042 * uFaceW * yokeW + torsoYawShiftX) / aspect;
-    p.y += -swallowLift - (uTorsoBreath * 0.0048 * uFaceH + shrugShift) * yokeW;
+  // 6) Strictly decoupled cervical neck column (pivots at lowerNeck, zero trapezius twist) + swallow motion
+  if (uPass < 1.5 && neckW > 0.001) {
+    float nEff = neckW * (1.0 - headW * 0.25);
+    vec2 nRel = vec2((p.x - uNeckPivot.x) * aspect, p.y - uNeckPivot.y);
+    float nr = uNeckRoll * nEff;
+    float cN = cos(nr);
+    float sN = sin(nr);
+    vec2 nRot = vec2(nRel.x * cN - nRel.y * sN, nRel.x * sN + nRel.y * cN);
+    nRot.x += clamp(uNeckRot.x, -0.65, 0.65) * 0.14 * uFaceW * nEff;
+    nRot.y += clamp(uNeckRot.y, -0.65, 0.65) * 0.08 * uFaceH * nEff;
+
+    float swPhase = clamp(uSwallowPhase, 0.0, 1.0);
+    float swWave = swPhase > 0.005 ? sin(swPhase * 3.14159265) : 0.0;
+    float hyoidCenterY = uAdamAppleCoord.y - swWave * 0.22;
+    float hyoidY = exp(-pow((vFaceCoord.y - hyoidCenterY) / 0.22, 2.0));
+    float hyoidX = 1.0 - smoothstep(0.12, 0.38, abs(vFaceCoord.x - uAdamAppleCoord.x));
+    float hyoidBand = hyoidY * hyoidX * neckW;
+    float swAmt = clamp(uSwallow, 0.0, 1.6);
+    float swallowLift = swAmt * hyoidBand * 0.022 * uFaceH;
+    float swallowSwell = swAmt * swWave * hyoidBand * sign(vFaceCoord.x - uAdamAppleCoord.x + 1e-4) * 0.005 * uFaceW;
+
+    p.x = uNeckPivot.x + (nRot.x + swallowSwell) / aspect;
+    p.y = uNeckPivot.y + nRot.y - swallowLift;
   }
 
+  // 7) Cohesive trapezius + shoulders moving independently below neckWallEndY without pinching clavicles
+  if (uPass < 1.5) {
+    float yokeW = clamp(torsoW * (1.0 - headW) * (1.0 - neckW), 0.0, 1.0);
+    if (yokeW > 0.001) {
+      float relShX = (p.x - uNeckPivot.x) * aspect;
+      float shoulderOuter = smoothstep(uFaceW * 0.28, uFaceW * 0.62, abs(relShX));
+      float sideSign = relShX < 0.0 ? -1.0 : 1.0;
+      float torsoYawShiftX = clamp(uTorsoYaw, -0.5, 0.5) * 0.012 * uFaceW * yokeW;
+      float shrugLift = clamp(uShoulderShrug, -0.2, 1.0) * shoulderOuter * 0.018 * uFaceH * yokeW;
+      float tiltDelta = clamp(uShoulderTilt, -0.8, 0.8) * sideSign * shoulderOuter * 0.015 * uFaceH * yokeW;
+      p.x += (uTorsoSwayX * 0.007 * uFaceW * yokeW + torsoYawShiftX) / aspect;
+      p.y += -shrugLift + tiltDelta - uTorsoBreath * 0.005 * uFaceH * yokeW;
+    }
+  }
+
+  // Camera approach perspective: subtly enlarge upper head/forehead & gently taper lower face/jaw
   if (headW > 0.001) {
-    float leanVal = clamp(uForwardLean, -0.35, 0.55);
-    float craniumZoom = 1.0 + leanVal * headW * 0.022;
-    vec2 leanAnchor = mix(uMouthCenter, uFaceCenter, 0.58);
-    vec2 relLean = vec2((p.x - leanAnchor.x) * aspect, p.y - leanAnchor.y) * craniumZoom;
+    float leanVal = clamp(uForwardLean, -0.45, 0.95);
+    float approachAmt = max(0.0, leanVal);
+    float retreatAmt = max(0.0, -leanVal);
+    float vY = clamp(vFaceCoord.y, -1.35, 1.25);
+    float upperHeadMask = smoothstep(0.12, -0.95, vY);
+    float lowerFaceMask = smoothstep(0.12, 0.95, vY);
+    float zoomX = 1.0 + (approachAmt * (0.018 + 0.040 * upperHeadMask - 0.044 * lowerFaceMask) - retreatAmt * 0.018) * headW;
+    float zoomY = 1.0 + (approachAmt * (0.016 + 0.036 * upperHeadMask - 0.028 * lowerFaceMask) - retreatAmt * 0.018) * headW;
+    vec2 leanAnchor = mix(uMouthCenter, uFaceCenter, 0.62);
+    vec2 relLean = vec2((p.x - leanAnchor.x) * aspect * zoomX, (p.y - leanAnchor.y) * zoomY);
     p.x = leanAnchor.x + relLean.x / aspect;
-    p.y = leanAnchor.y + relLean.y + leanVal * headW * 0.004 * uFaceH;
+    p.y = leanAnchor.y + relLean.y + (approachAmt * (0.004 - 0.010 * lowerFaceMask) - retreatAmt * 0.003) * headW * uFaceH;
   }
 
   // 7) Hair stays strictly locked to cranium (zero detached hair warping)
@@ -363,6 +427,7 @@ uniform float uTime;
 uniform float uOpen;
 uniform float uWide;
 uniform float uRound;
+uniform float uPucker;
 uniform float uLipPress;
 uniform float uUpperLipLift;
 uniform float uLowerLipDrop;
@@ -370,6 +435,7 @@ uniform float uLipBite;
 uniform float uSmile;
 uniform float uSmileR;
 uniform float uSmileL;
+uniform float uSmileTeeth;
 uniform float uCheekLift;
 uniform float uInnerBrowY;
 uniform float uInnerBrowPinch;
@@ -385,6 +451,7 @@ uniform float uPupilDilate;
 uniform float uSweatAmount;
 uniform float uBlushAmount;
 uniform float uSwallow;
+uniform float uSwallowPhase;
 uniform vec2 uAdamAppleCoord;
 uniform vec2 uHeadRot;
 uniform vec4 uFaceAxis;
@@ -402,6 +469,7 @@ uniform vec3 uRScleraNeg;
 uniform vec3 uRScleraPos;
 uniform vec3 uLScleraNeg;
 uniform vec3 uLScleraPos;
+uniform vec2 uEyeBrowFloor;
 
 in vec2 vUv;
 in float vEdgeFade;
@@ -412,6 +480,7 @@ in float vJawDropMouthW;
 in float vJawBoneDropMouthW;
 in vec2 vRigidMouth;
 in vec2 vFaceCoord;
+in float vHeadTurn;
 
 out vec4 fragColor;
 
@@ -465,6 +534,16 @@ vec3 sampleCrispTeeth(vec2 uv) {
   return texture(uTeethTex, uv).rgb;
 }
 
+vec3 sampleSoftTeeth(vec2 uv) {
+  vec2 d = vec2(0.0022, 0.0038);
+  vec3 c = texture(uTeethTex, uv).rgb * 0.44;
+  c += texture(uTeethTex, clamp(uv + vec2( d.x, 0.0), 0.002, 0.998)).rgb * 0.14;
+  c += texture(uTeethTex, clamp(uv + vec2(-d.x, 0.0), 0.002, 0.998)).rgb * 0.14;
+  c += texture(uTeethTex, clamp(uv + vec2(0.0,  d.y), 0.002, 0.998)).rgb * 0.14;
+  c += texture(uTeethTex, clamp(uv + vec2(0.0, -d.y), 0.002, 0.998)).rgb * 0.14;
+  return c;
+}
+
 vec3 sampleBlurredBg(vec2 uv) {
   vec3 baseBlur = texture(uBgBlurTex, uv).rgb;
   vec2 rad = uBgTexel * 5.0;
@@ -479,7 +558,10 @@ vec3 sampleBlurredBg(vec2 uv) {
   return bokeh * 0.95;
 }
 
-// Photorealistic human eye: verified homogeneous sclera (zero double-cornea), 100% original iris color, full outer eyeliner-wing closure
+// Photorealistic static-photo eye & eyelid animation:
+// - 100% original photo around the eye when open (ZERO cutout halo, ZERO runtime luminance/color swapping)
+// - Horizontal-only gaze (left <-> right) keeping clean surrounding sclera with zero duplicate cornea
+// - Eye-widening smoothly stretches upper lid + clean upper eye aperture seamlessly without seams or extra corneas
 vec3 renderHumanEye(
   vec3 baseRgb,
   vec2 eyeCenter,
@@ -491,8 +573,7 @@ vec3 renderHumanEye(
   vec4 lowerA,
   vec4 lowerB,
   float irisRadNorm,
-  vec3 scleraNegColor,
-  vec3 scleraPosColor,
+  float browFloorEy,
   float eyeBlink,
   float outerSign,
   float aspect
@@ -509,114 +590,180 @@ vec3 renderHumanEye(
   float rawTopY = evalLidCurveOuter(ex, upperA, upperB, outerSign, outerReach, outerWingY, -0.05);
   float rawBotY = evalLidCurveOuter(ex, lowerA, lowerB, outerSign, outerReach, outerWingY, 0.05);
 
-  // Reach all the way past the outer eye commissure & detected eyeliner/lash wing
   bool isOuterSide = (ex * outerSign) > 0.0;
   float maxReach = isOuterSide ? outerReach : 1.06;
   float exNorm = abs(ex) / maxReach;
   float cornerEnv = 1.0 - smoothstep(0.84, 1.0, exNorm);
   if (cornerEnv < 0.002) return baseRgb;
 
-  float effectiveTopBase = rawTopY;
+  // Slightly raised tarsal resting baseline so default lid isn't glued down onto dark eyelashes
+  float effectiveTopBase = rawTopY - 0.05;
   float effectiveBotBase = rawBotY;
 
   float effectiveBlink = max(eyeBlink, clamp(uLidDroop, 0.0, 0.85) * 0.68);
-  float blinkClose = clamp(effectiveBlink - uEyeWide * 0.05, 0.0, 1.0);
-  float squintClose = clamp(uSquint * 0.24, 0.0, 0.36);
+  float blinkClose = clamp(effectiveBlink - uEyeWide * 0.06, 0.0, 1.0);
+  float squintClose = clamp(uSquint * 0.22, 0.0, 0.32);
   float lidAction = max(blinkClose, squintClose);
 
   float paraCurve = 1.0 - min(1.0, exNorm * exNorm);
-  float meetArch = 0.045 * paraCurve * blinkClose;
+  float wideLift = clamp(uEyeWide, 0.0, 1.0) * 0.28 * (1.0 - blinkClose) * (1.0 - clamp(uSquint, 0.0, 1.0) * 0.70) * (0.38 + 0.62 * paraCurve);
+  float meetArch = 0.056 * paraCurve * blinkClose;
   float outerCloseBias = smoothstep(0.28, outerReach * 0.86, ex * outerSign);
   float meet = mix(effectiveTopBase, effectiveBotBase, mix(0.86, 1.0, outerCloseBias)) + meetArch;
-  float topY = mix(effectiveTopBase, meet, blinkClose);
+  float topY = mix(effectiveTopBase, meet, blinkClose) - wideLift;
   float squintBot = mix(effectiveBotBase, mix(effectiveBotBase, effectiveTopBase, 0.22), squintClose);
-  float botY = mix(squintBot, meet + 0.006, blinkClose);
+  float botY = mix(squintBot + wideLift * 0.12 * (1.0 - blinkClose), meet + 0.006, blinkClose);
 
-  float feather = max(0.022, fwidth(ey) * 1.3);
+  float feather = max(0.020, fwidth(ey) * 1.25);
   float rawAperture = cornerEnv * smoothstep(effectiveTopBase - feather, effectiveTopBase + feather, ey) *
     (1.0 - smoothstep(effectiveBotBase - feather, effectiveBotBase + feather, ey));
   float aperture = cornerEnv * smoothstep(topY - feather, topY + feather, ey) *
     (1.0 - smoothstep(botY - feather, botY + feather, ey));
 
-  // Strictly bound upperCrease below eyebrow hairs so blinking never drags or darkens raised eyebrows onto the eyelid
-  float archEnv = 1.0 - 0.04 * min(1.0, exNorm * exNorm);
-  float upperCrease = effectiveTopBase - 1.12 * archEnv;
-  float lowerCrease = effectiveBotBase + 0.84 * archEnv;
+  // Raised tarsal skin ceiling well above dark lash line (bounded safely below rest browFloorEy)
+  float archEnv = 1.0 - 0.05 * min(1.0, exNorm * exNorm);
+  float safeBrowCeil = min(rawTopY - 0.36, browFloorEy + 0.02);
+  float upperCrease = max(safeBrowCeil, rawTopY - 0.82 * archEnv);
+  float lowerCrease = effectiveBotBase + 0.64 * archEnv;
 
-  float lidTopFeather = smoothstep(upperCrease - 0.12, upperCrease + 0.26, ey);
-  float lidBotFeather = 1.0 - smoothstep(lowerCrease - 0.20, lowerCrease + 0.16, ey);
+  float lidTopFeather = smoothstep(upperCrease - 0.04, upperCrease + 0.14, ey);
+  float lidBotFeather = 1.0 - smoothstep(lowerCrease - 0.14, lowerCrease + 0.04, ey);
   float lidZoneMask = cornerEnv * lidTopFeather * lidBotFeather;
-  float lidMovingMask = smoothstep(0.004, 0.040, lidAction);
+  float lidMovingMask = max(
+    smoothstep(0.003, 0.028, lidAction),
+    smoothstep(0.006, 0.055, wideLift)
+  );
 
-  // Defined eyeliner & lash contour reaching cleanly across the outer eye wing
-  float linerSpan = isOuterSide
-    ? (1.0 - smoothstep(0.84, outerReach * 0.98, ex * outerSign)) * cornerEnv
-    : (1.0 - smoothstep(0.76, 1.04, -ex * outerSign)) * cornerEnv;
-  float upperLinerBand = exp(-pow((ey - (topY - 0.04)) / 0.095, 2.0)) * linerSpan;
-  float outerWingBoost = mix(0.78, 1.22, smoothstep(0.15, 1.08, ex * outerSign));
-  float lowerLinerMask = smoothstep(-0.20, outerReach * 0.78, ex * outerSign) * linerSpan;
-  float lowerLinerBand = exp(-pow((ey - (botY + 0.05)) / 0.090, 2.0)) * lowerLinerMask;
-  float contourMask = clamp(max(upperLinerBand * outerWingBoost, lowerLinerBand * 0.42), 0.0, 1.0);
-
-  float effectMask = max(max(rawAperture, lidZoneMask * lidMovingMask), contourMask * 0.72);
+  // When open and resting, ONLY pixels inside the open eye aperture can ever change; surrounding eyelids stay 100% baseRgb
+  float effectMask = max(max(rawAperture, aperture), lidZoneMask * lidMovingMask);
   if (effectMask < 0.002) return baseRgb;
 
-  float sourceY;
-  if (ey <= topY) {
-    float tUp = clamp((ey - upperCrease) / max(0.04, topY - upperCrease), 0.0, 1.0);
-    sourceY = mix(upperCrease, effectiveTopBase - 0.024 * lidMovingMask, pow(tUp, 1.02));
-  } else if (ey >= botY) {
-    float tDn = clamp((ey - botY) / max(0.04, lowerCrease - botY), 0.0, 1.0);
-    sourceY = mix(effectiveBotBase + 0.016 * lidMovingMask, lowerCrease, tDn);
-  } else {
-    float tAp = clamp((ey - topY) / max(0.025, botY - topY), 0.0, 1.0);
-    sourceY = mix(effectiveTopBase - 0.024 * lidMovingMask, effectiveBotBase + 0.016 * lidMovingMask, tAp);
+  // Stretch strictly clean tarsal skin well above the dark lash margin so moving/widening lids stay smooth
+  float sourceY = ey;
+  float upperEdgeBlend = 0.0;
+  if (lidMovingMask > 0.002) {
+    if (ey <= topY) {
+      float tUp = clamp((ey - upperCrease) / max(0.04, topY - upperCrease), 0.0, 1.0);
+      float skinSplit = clamp(tUp / 0.90, 0.0, 1.0);
+      upperEdgeBlend = smoothstep(0.86, 1.0, tUp) * smoothstep(0.02, 0.25, lidAction);
+      float targetUpperSkin = mix(rawTopY - 0.30, rawTopY - 0.18, upperEdgeBlend);
+      sourceY = mix(upperCrease, targetUpperSkin, skinSplit);
+    } else if (ey >= botY) {
+      float tDn = clamp((ey - botY) / max(0.04, lowerCrease - botY), 0.0, 1.0);
+      sourceY = mix(effectiveBotBase + 0.06, lowerCrease, tDn);
+    } else {
+      float tAp = clamp((ey - topY) / max(0.02, botY - topY), 0.0, 1.0);
+      sourceY = mix(rawTopY - 0.24, effectiveBotBase + 0.06, tAp);
+    }
   }
-
   vec2 sourceDelta = eyeAxis.xy * (ex * halfW) + eyeAxis.zw * (sourceY * scaleY);
   vec2 sourceUv = eyeCenter + vec2(sourceDelta.x / aspect, sourceDelta.y);
-  vec3 photoSkin = texture(uPhotoTex, clamp(sourceUv, 0.001, 0.999)).rgb;
+  vec3 deformedLid = texture(uPhotoTex, clamp(sourceUv, 0.001, 0.999)).rgb;
+  if (upperEdgeBlend > 0.01) {
+    deformedLid = mix(deformedLid, uEyelidColor * 0.90, upperEdgeBlend * 0.28);
+  }
 
-  // Reject any dark eyebrow hairs/shadow near upperCrease during blink so raised eyebrows never darken the descending lid
-  float refLidLum = max(0.18, dot(uEyelidColor, vec3(0.299, 0.587, 0.114)));
-  float sampleLum = dot(photoSkin, vec3(0.299, 0.587, 0.114));
-  float upperSampleFrac = smoothstep(effectiveTopBase - 0.25, upperCrease, sourceY);
-  float darkBrowReject = (1.0 - smoothstep(refLidLum * 0.62, refLidLum * 0.90, sampleLum)) * upperSampleFrac * lidMovingMask;
-  photoSkin = mix(photoSkin, uEyelidColor, clamp(darkBrowReject, 0.0, 0.94));
-
-  float crispLashEdge = exp(-pow((ey - topY) / 0.068, 2.0)) * (0.34 + 0.24 * blinkClose) * linerSpan * outerWingBoost;
-  float domeHighlight = exp(-pow(ex / 0.78, 2.0)) *
-    exp(-pow((ey - mix(effectiveTopBase, topY, 0.52)) / 0.52, 2.0)) *
-    blinkClose * 0.018;
-  vec3 linerInk = vec3(0.055, 0.040, 0.036);
-  vec3 sculptedLid = mix(clamp(photoSkin + vec3(domeHighlight), 0.0, 1.0), linerInk, clamp(crispLashEdge, 0.0, 0.72));
-
-  // Split-sclera square atlas: left/right sampled light sclera gradient + extracted crisp original cornea
-  float shiftEx = clamp(uGaze.x * 0.40, -0.44, 0.44);
-  float shiftEy = clamp(-(uGaze.y * 0.66 + uEyeRoll * 1.10), -1.75, 1.75);
-  float moveActive = smoothstep(0.012, 0.075, length(vec2(shiftEx, shiftEy)));
-
-  float atlasLocalU = clamp(((ex - shiftEx) / 1.9) * 0.5 + 0.5, 0.005, 0.995);
-  float atlasU = (outerSign < 0.0 ? 0.0 : 0.5) + atlasLocalU * 0.5;
-  float atlasV = clamp(((ey - shiftEy) / 2.9) * 0.5 + 0.5, 0.005, 0.995);
-  vec3 atlasEye = texture(uEyeAtlasTex, vec2(atlasU, atlasV)).rgb;
-
-  // Keep stationary inner lacrimal caruncle anchored smoothly in the inner eye corner
-  float innerCornerAnchor = smoothstep(0.62, 0.88, -ex * outerSign);
-  float upperLidShadow = mix(0.96, 1.0, smoothstep(topY, topY + 0.16, ey));
-  vec3 eyeCol = mix(baseRgb, atlasEye * upperLidShadow, moveActive * (1.0 - innerCornerAnchor * 0.92));
-
+  // Horizontal-only gaze (left <-> right, shiftEy = 0) + seamless upper stretch when eye opens wider
   vec2 dPupil = vec2((eyePupil.x - eyeCenter.x) * aspect, eyePupil.y - eyeCenter.y);
   float pupilEx = dot(dPupil, eyeAxis.xy) / halfW;
   float pupilEy = dot(dPupil, eyeAxis.zw) / scaleY;
-  float lenNew = length(vec2((ex - shiftEx - pupilEx) * halfW, (ey - shiftEy - pupilEy) * scaleY));
   float baseIrisR = max(0.002, irisRadNorm);
-  float drawR = baseIrisR * 0.96;
+
+  float maxYawClamp = mix(0.46, 0.40, clamp(abs(vHeadTurn) * 2.4, 0.0, 1.0));
+  float rawShiftEx = clamp(uGaze.x * 0.42, -maxYawClamp, maxYawClamp);
+  float shiftEx = clamp(pupilEx + rawShiftEx, -0.58, 0.58) - pupilEx;
+  float shiftEy = 0.0;
+  float shiftMag = abs(shiftEx);
+  float moveActive = smoothstep(0.004, 0.024, shiftMag);
+
+  float tileXOff = outerSign < 0.0 ? 0.0 : 0.5;
+  float innerCornerAnchor = smoothstep(0.68, 0.92, -ex * outerSign);
+  float clearR = baseIrisR * 1.24;
+
+  vec3 eyeCol = baseRgb;
+  float wideAct = smoothstep(0.006, 0.055, wideLift) * aperture * (1.0 - smoothstep(0.55, 0.88, blinkClose));
+  if (wideAct > 0.002) {
+    // Seamlessly remap open upper & lower aperture coordinates strictly inside clean below-lash photo bounds (zero extra cornea or seam)
+    float safeAnchorTop = min(pupilEy - 0.14, effectiveTopBase + 0.13);
+    float safeAnchorBot = max(pupilEy + 0.14, effectiveBotBase - 0.04);
+    float tOpen = clamp((ey - topY) / max(0.04, botY - topY), 0.0, 1.0);
+    float mappedEy = mix(safeAnchorTop, safeAnchorBot, tOpen);
+    vec2 stretchDelta = eyeAxis.xy * (ex * halfW) + eyeAxis.zw * (mappedEy * scaleY);
+    vec2 stretchUv = eyeCenter + vec2(stretchDelta.x / aspect, stretchDelta.y);
+    vec3 stretchedEye = texture(uPhotoTex, clamp(stretchUv, 0.001, 0.999)).rgb;
+    float upperLidShade = mix(0.92, 1.0, smoothstep(topY, topY + 0.18, ey));
+    eyeCol = mix(eyeCol, stretchedEye * upperLidShade, wideAct);
+  }
+
+  if (moveActive > 0.002) {
+    vec2 X = vec2(ex * halfW, ey * scaleY);
+    vec2 C0 = vec2(pupilEx * halfW, pupilEy * scaleY);
+    vec2 shiftVec = vec2(shiftEx * halfW, shiftEy * scaleY);
+    vec2 C1 = C0 + shiftVec;
+    float dOld = length(X - C0);
+    float dNew = length(X - C1);
+
+    // Horizontal gaze preserves photo sclera outside the vacated circle and fills ONLY vacated resting circle from true neighbor sclera
+    vec2 dirFromC1 = dNew > 1e-5 ? (X - C1) / dNew : vec2(1.0, 0.0);
+    vec2 pRestLimbus = C0 + dirFromC1 * clearR;
+    float span = max(baseIrisR * 1.25, halfW * 0.58);
+    float t1 = clamp((dNew - baseIrisR * 0.94) / span, 0.0, 1.0);
+    float t2 = clamp((dOld - clearR) / span, 0.0, 1.0);
+    float s = smoothstep(0.0, 1.0, min(t1, t2));
+
+    if (s < 0.999 && dNew >= baseIrisR * 0.84) {
+      vec2 pSrc = mix(pRestLimbus, X, s);
+      float dRest = length(pSrc - C0);
+      float remapW = moveActive * (1.0 - s) * (1.0 - innerCornerAnchor * 0.94);
+
+      float pSrcEx = clamp(pSrc.x / halfW, -0.94, 0.94);
+      float lidTopAtSrc = evalLidCurveOuter(pSrcEx, upperA, upperB, outerSign, outerReach, outerWingY, -0.05);
+      float lidBotAtSrc = evalLidCurveOuter(pSrcEx, lowerA, lowerB, outerSign, outerReach, outerWingY, 0.05);
+      float safeMinEy = lidTopAtSrc + 0.14;
+      float safeMaxEy = max(safeMinEy + 0.02, lidBotAtSrc - 0.11);
+      float pSrcEy = clamp(pSrc.y / scaleY, safeMinEy, safeMaxEy);
+      vec2 scleraDelta = eyeAxis.xy * (pSrcEx * halfW) + eyeAxis.zw * (pSrcEy * scaleY);
+      vec3 directSclera = texture(uPhotoTex, clamp(eyeCenter + vec2(scleraDelta.x / aspect, scleraDelta.y), 0.001, 0.999)).rgb;
+
+      float patchU = tileXOff + clamp((clamp(pSrcEx, -1.85, 1.85) / 1.9) * 0.5 + 0.5, 0.005, 0.995) * 0.5;
+      float patchV = 0.5 + clamp((clamp(pSrcEy, -2.85, 2.85) / 2.9) * 0.5 + 0.5, 0.005, 0.995) * 0.5;
+      vec3 atlasSclera = texture(uEyeAtlasTex, vec2(patchU, patchV)).rgb;
+
+      float bridgeWeight = 1.0 - smoothstep(clearR * 0.78, clearR * 1.08, dRest);
+      vec3 chosenSclera = mix(directSclera, atlasSclera, bridgeWeight * 0.78);
+      eyeCol = mix(eyeCol, chosenSclera, remapW);
+    }
+
+    // Extract and composite crisp photographic cornea at horizontal gaze target
+    vec2 dirShift = length(shiftVec) > 1e-5 ? normalize(shiftVec) : vec2(1.0, 0.0);
+    vec2 relM = X - C1;
+    float axialProj = dot(relM, dirShift);
+    float gazeStretch = 1.0 + clamp(shiftMag, 0.0, 1.2) * 0.06;
+    vec2 relStretched = relM - dirShift * (axialProj * (1.0 - 1.0 / gazeStretch));
+    float dStretched = length(relStretched);
+    float dilateFactor = clamp(uPupilDilate, 0.0, 1.0) * 0.22;
+    float radialFrac = clamp(dStretched / baseIrisR, 0.0, 1.4);
+    float radialScale = radialFrac < 0.44 ? mix(1.0 - dilateFactor, 1.0, smoothstep(0.22, 0.44, radialFrac)) : 1.0;
+    vec2 sampleOffset = relStretched * radialScale;
+    float sampleEx = pupilEx + sampleOffset.x / halfW;
+    float sampleEy = pupilEy + sampleOffset.y / scaleY;
+
+    float corneaU = tileXOff + clamp((sampleEx / 1.9) * 0.5 + 0.5, 0.005, 0.995) * 0.5;
+    float corneaV = clamp((sampleEy / 2.9) * 0.5 + 0.5, 0.005, 0.995) * 0.5;
+    vec4 corneaSamp = texture(uEyeAtlasTex, vec2(corneaU, corneaV));
+
+    float lidCastAO = mix(0.90, 1.0, smoothstep(topY, topY + 0.22, ey));
+    vec3 litCornea = clamp(corneaSamp.rgb * lidCastAO, 0.0, 1.0);
+    float corneaAlpha = corneaSamp.a * moveActive * (1.0 - innerCornerAnchor * 0.94);
+    eyeCol = mix(eyeCol, litCornea, corneaAlpha);
+  }
+
+  float distMoved = length(vec2((ex - shiftEx - pupilEx) * halfW, (ey - shiftEy - pupilEy) * scaleY));
   float eraseR = baseIrisR * 1.14;
 
   float redAmt = clamp(uEyeRedness, 0.0, 1.0);
   if (redAmt > 0.02) {
-    float irisArea = 1.0 - smoothstep(drawR * 0.92, eraseR * 1.04, lenNew);
+    float irisArea = 1.0 - smoothstep(baseIrisR * 0.92, eraseR * 1.04, distMoved);
     float scleralArea = (1.0 - irisArea) * aperture;
     float outerRimBias = smoothstep(0.45, 0.95, abs(ex));
     vec3 irritated = eyeCol * mix(vec3(1.0), vec3(1.02, 0.88, 0.87), redAmt * 0.24 * outerRimBias);
@@ -631,16 +778,12 @@ vec3 renderHumanEye(
   }
 
   float openInside = aperture * (1.0 - smoothstep(0.76, 0.92, blinkClose));
-  vec3 result = mix(sculptedLid, eyeCol, openInside);
-
-  // Subtle defined upper & lower outer eyeliner contour around the open eye rim
-  float openContour = clamp((upperLinerBand * outerWingBoost * 0.48 + lowerLinerBand * 0.26) * (1.0 - openInside * 0.55), 0.0, 0.62);
-  result = mix(result, linerInk, openContour);
+  vec3 result = mix(deformedLid, eyeCol, openInside);
 
   return mix(baseRgb, result, effectMask);
 }
 
-// Dynamic facial creases, glabella "11" wrinkles, disgust nose-bridge & upper-nasolabial sneer folds, crow's feet & forehead lines
+// Subtle dynamic facial creases (zero dark nose-contour outlines when angry or furrowing brows)
 vec3 applyExpressionWrinkles(vec3 col, vec2 fc, vec2 rm) {
   float absX = abs(fc.x);
   float skinMask = (1.0 - smoothstep(0.84, 1.08, absX)) * (1.0 - smoothstep(0.88, 1.10, abs(fc.y)));
@@ -650,60 +793,49 @@ vec3 applyExpressionWrinkles(vec3 col, vec2 fc, vec2 rm) {
   float skinToneMask = smoothstep(0.14, 0.30, luma);
   if (skinToneMask < 0.01) return col;
 
-  // 1) Nasolabial folds (zygomatic smile & upper-lip disgust sneer arch around/above nostrils)
+  // 1) Nasolabial smile folds (strictly smile/cheek-lift driven, never outlining nose on anger)
   float sideSmile = fc.x < 0.0 ? max(0.0, uSmileR) : max(0.0, uSmileL);
-  float noseScrunchAct = smoothstep(0.12, 0.82, max(0.0, uNoseFlare));
-  float foldWeight = clamp(0.14 + sideSmile * 0.72 + uCheekLift * 0.54 + noseScrunchAct * 0.58, 0.0, 1.35);
-  float nasoCurveX = 0.22 + smoothstep(-0.04, 0.54, fc.y) * 0.36;
-  float nasoVert = smoothstep(-0.08, 0.10, fc.y) * (1.0 - smoothstep(0.46, 0.64, fc.y));
+  float foldWeight = clamp(sideSmile * 0.62 + uCheekLift * 0.46, 0.0, 1.0);
+  float nasoCurveX = 0.26 + smoothstep(0.04, 0.54, fc.y) * 0.34;
+  float nasoVert = smoothstep(0.02, 0.18, fc.y) * (1.0 - smoothstep(0.46, 0.64, fc.y));
   float nasoDist = abs(absX - nasoCurveX);
   float nasoShadow = exp(-pow(nasoDist / 0.048, 2.0)) * nasoVert * foldWeight;
 
-  // 2) Crow's-feet outer-eye smile crinkles & lower-lid smile crease
-  float squintAct = smoothstep(0.12, 0.82, max(0.18, uSquint + uCheekLift * 0.42 + sideSmile * 0.30));
-  float crowZone = smoothstep(0.50, 0.68, absX) * (1.0 - smoothstep(0.90, 1.04, absX)) *
-    exp(-pow((fc.y + 0.16) / 0.15, 2.0));
-  float crowRays = 0.5 + 0.5 * cos((fc.y + 0.16) * 46.0 - (absX - 0.64) * 18.0);
-  float crowShadow = crowZone * crowRays * squintAct * 0.75;
+  // 2) Subtle crow's-feet outer-eye smile crinkles
+  float squintAct = smoothstep(0.16, 0.85, max(0.0, uSquint + uCheekLift * 0.36 + sideSmile * 0.28));
+  float crowZone = smoothstep(0.52, 0.70, absX) * (1.0 - smoothstep(0.90, 1.04, absX)) *
+    exp(-pow((fc.y + 0.16) / 0.14, 2.0));
+  float crowRays = 0.5 + 0.5 * cos((fc.y + 0.16) * 44.0 - (absX - 0.64) * 16.0);
+  float crowShadow = crowZone * crowRays * squintAct * 0.55;
 
   float underEyeCrease = exp(-pow((absX - 0.36) / 0.18, 2.0)) *
-    exp(-pow((fc.y + 0.05) / 0.042, 2.0)) * (sideSmile * 0.45 + uCheekLift * 0.50);
+    exp(-pow((fc.y + 0.05) / 0.042, 2.0)) * (sideSmile * 0.35 + uCheekLift * 0.40);
 
-  // 3) Glabella "11" anger creases between brows + horizontal bunny nose-bridge scrunch creases
-  float furrowAct = smoothstep(0.04, 0.72, uInnerBrowPinch);
-  float glabellaZone = exp(-pow((absX - 0.068) / 0.032, 2.0)) *
-    smoothstep(-0.58, -0.42, fc.y) * (1.0 - smoothstep(-0.20, -0.08, fc.y));
-  float glabellaShadow = glabellaZone * furrowAct * 1.48;
+  // 3) Soft central glabella furrow between inner brows only (no nose-bridge or side-nose outlines)
+  float furrowAct = smoothstep(0.08, 0.78, uInnerBrowPinch);
+  float glabellaZone = exp(-pow((absX - 0.062) / 0.028, 2.0)) *
+    smoothstep(-0.56, -0.44, fc.y) * (1.0 - smoothstep(-0.28, -0.18, fc.y));
+  float glabellaShadow = glabellaZone * furrowAct * 0.85;
 
-  float bridgeZone = (1.0 - smoothstep(0.06, 0.22, absX)) *
-    smoothstep(-0.34, -0.24, fc.y) * (1.0 - smoothstep(-0.04, 0.05, fc.y));
-  float bridgeLines = 0.5 + 0.5 * cos((fc.y + 0.18) * 58.0);
-  float bunnySideZone = exp(-pow((absX - 0.14) / 0.05, 2.0)) *
-    exp(-pow((fc.y + 0.06) / 0.10, 2.0));
-  float bunnyShadow = (bridgeZone * bridgeLines * 0.90 + bunnySideZone * 0.80) * noseScrunchAct;
+  // 4) Soft forehead expression lines on high brow raise
+  float browHigh = smoothstep(0.24, 0.88, (uInnerBrowY + uOuterBrowY) * 0.5);
+  float foreheadZone = (1.0 - smoothstep(0.28, 0.66, absX)) *
+    smoothstep(-0.88, -0.74, fc.y) * (1.0 - smoothstep(-0.52, -0.42, fc.y));
+  float foreheadBands = 0.5 + 0.5 * cos((fc.y + 0.66) * 42.0);
+  float foreheadShadow = foreheadZone * foreheadBands * browHigh * 0.52;
 
-  // 4) Expressive forehead lines on brow lift & central supra-brow anger tension creases
-  float browHigh = smoothstep(0.18, 0.85, (uInnerBrowY + uOuterBrowY) * 0.5);
-  float foreheadZone = (1.0 - smoothstep(0.28, 0.68, absX)) *
-    smoothstep(-0.88, -0.74, fc.y) * (1.0 - smoothstep(-0.50, -0.40, fc.y));
-  float foreheadBands = 0.5 + 0.5 * cos((fc.y + 0.66) * 44.0);
-  float frownArchZone = (1.0 - smoothstep(0.08, 0.34, absX)) *
-    smoothstep(-0.74, -0.60, fc.y) * (1.0 - smoothstep(-0.46, -0.36, fc.y));
-  float frownArchLines = 0.5 + 0.5 * cos((fc.y + 0.56) * 52.0);
-  float foreheadShadow = foreheadZone * foreheadBands * browHigh * 0.68 + frownArchZone * frownArchLines * furrowAct * 0.85;
-
-  // 5) Mouth corner dimple shading
+  // 5) Subtle mouth corner dimple shading
   float restSlitY = (uRestMouthTopY + uRestMouthBotY) * 0.5;
   float cornerDimple = exp(-pow((abs(rm.x) - 0.96) / 0.12, 2.0)) *
-    exp(-pow((rm.y - restSlitY) / 0.075, 2.0)) * (0.20 + uSmile * 0.32 + uLipPress * 0.28);
+    exp(-pow((rm.y - restSlitY) / 0.075, 2.0)) * (0.16 + uSmile * 0.28 + uLipPress * 0.24);
 
   float totalCrease = clamp(
-    (nasoShadow * 0.12 + crowShadow * 0.10 + underEyeCrease * 0.08 + glabellaShadow * 0.22 +
-     bunnyShadow * 0.13 + foreheadShadow * 0.13 + cornerDimple * 0.10) * skinMask * skinToneMask,
+    (nasoShadow * 0.075 + crowShadow * 0.075 + underEyeCrease * 0.06 + glabellaShadow * 0.11 +
+     foreheadShadow * 0.10 + cornerDimple * 0.08) * skinMask * skinToneMask,
     0.0,
-    0.36
+    0.22
   );
-  vec3 shaded = col * mix(vec3(1.0), vec3(0.66, 0.54, 0.50), totalCrease);
+  vec3 shaded = col * mix(vec3(1.0), vec3(0.68, 0.56, 0.52), totalCrease);
   return clamp(shaded, 0.0, 1.0);
 }
 
@@ -823,10 +955,11 @@ vec3 applyPhysicalEffects(vec3 col, vec2 fc) {
 
 vec3 whitenToothEnamel(vec3 rawTex, float brighten) {
   float lum = dot(rawTex, vec3(0.299, 0.587, 0.114));
-  vec3 neutralWhite = mix(rawTex, vec3(lum * 1.015, lum * 1.005, lum * 0.985), 0.72);
+  vec3 neutralWhite = mix(rawTex, vec3(lum * 1.015, lum * 1.005, lum * 0.985), 0.68);
+  vec3 portraitLight = mix(vec3(1.0, 0.99, 0.97), clamp(uEnamelColor * 1.32, 0.68, 1.04), 0.34);
   float enamelWeight = smoothstep(0.24, 0.72, lum);
-  vec3 scaleCol = neutralWhite * mix(0.86, brighten, enamelWeight);
-  return clamp(scaleCol, vec3(0.0), vec3(0.97));
+  vec3 scaleCol = neutralWhite * portraitLight * mix(0.86, brighten, enamelWeight);
+  return clamp(scaleCol, vec3(0.0), vec3(0.96));
 }
 
 void main() {
@@ -843,8 +976,8 @@ void main() {
   float fgAlpha = texture(uFgMaskTex, uvSafe).r;
 
   if (uPass > 1.5) {
-    // Watertight photorealistic oral cavity: very dark red interior flesh, perspective tongue, and cleanly SEPARATED white photographic upper/lower teeth
-    float closedBite = smoothstep(0.34, 0.78, uSmile) * (1.0 - smoothstep(0.06, 0.18, uOpen));
+    // Watertight photorealistic oral cavity: closed/parted smile modes, portrait-matched dental enamel & wide jaw gap
+    float closedBite = uSmileTeeth * smoothstep(0.32, 0.76, uSmile) * (1.0 - smoothstep(0.06, 0.18, uOpen)) * (1.0 - smoothstep(0.18, 0.45, uPucker + uLipPress));
     float activeOpen = max(uOpen, max(uUpperLipLift * 0.48, max(uLowerLipDrop * 0.42, uTongueOut * 0.34)));
     float openMask = max(
       closedBite * 0.96,
@@ -857,98 +990,110 @@ void main() {
     }
 
     float absX = abs(vMouthX);
-    float cornerCurve = 0.08 * pow(absX, 1.8);
-    float rimAA = max(0.018, fwidth(vMouthLipT) * 1.4);
+    float cornerCurve = 0.03 * pow(absX, 1.8);
+    float rimAA = max(0.004, fwidth(vMouthLipT) * 0.75);
     float topRim = smoothstep(cornerCurve, cornerCurve + rimAA, vMouthLipT);
-    // Keep oral cavity & teeth strictly inside the opaque lower lip border (zero translucent teeth showing through lower lip)
-    float botCut = 0.89 - cornerCurve * 0.65;
+    // Crisp inner lower-lip cutoff + labial sulcus stop so teeth/gums NEVER mix blurrily into the lower lip
+    float botCut = 0.992 - cornerCurve * 0.25;
     float botRim = smoothstep(botCut, botCut - rimAA, vMouthLipT);
-    float sideAlmondFade = 1.0 - smoothstep(0.84, 0.99, absX);
+    float sideAlmondFade = 1.0 - smoothstep(0.92, 0.998, absX);
     float lipRimFeather = topRim * botRim * sideAlmondFade;
 
-    // Skull-space spatial mouth coordinates (teeth stay fixed on maxilla while lips shift laterally)
+    // Skull-space spatial mouth coordinates: natural upward-curving outward smile arch for both upper and lower dental arches + visible gums
     float x = vMouthPlane.x;
     float y = vMouthPlane.y;
-    float jawY = y - vJawBoneDropMouthW * 0.80;
-    float ax = clamp(x - uYaw * 0.075, -0.46, 0.46);
+    float jawY = y - vJawBoneDropMouthW * 0.84;
+    float ax = clamp(x - uYaw * 0.070, -0.56, 0.56);
     float absAx = abs(ax);
-    float archCurve = min(1.0, absAx / 0.44);
-    float toothTexU = clamp(0.5 + ax * 1.05, 0.06, 0.94);
-    float uCurve = pow(abs(toothTexU - 0.5) / 0.44, 1.8);
+    float archCurve = min(1.0, absAx / 0.54);
+    float toothTexU = clamp(0.5 + ax * 0.86, 0.025, 0.975);
+    float uCurve = pow(abs(toothTexU - 0.5) / 0.475, 1.75);
 
-    // 1) Deep very-dark-red flesh interior cavity (never skin tone!)
-    vec2 cavUv = vec2(clamp(0.5 + ax * 0.52, 0.22, 0.78), mix(0.36, 0.50, clamp(vMouthLipT, 0.0, 1.0)));
-    vec3 rawCav = sampleCrispTeeth(cavUv);
+    // 1) Deep very-dark-red flesh interior cavity
+    vec2 cavUv = vec2(clamp(0.5 + ax * 0.52, 0.20, 0.80), mix(0.36, 0.50, clamp(vMouthLipT, 0.0, 1.0)));
+    vec3 rawCav = sampleSoftTeeth(cavUv);
     float cavDepth = 1.0 - 0.56 * (1.0 - abs(vMouthLipT - 0.44) * 1.25) * (1.0 - absX * 0.65);
     vec3 deepRedFlesh = vec3(0.048, 0.005, 0.007) + vec3(rawCav.r * 0.088, rawCav.g * 0.012, rawCav.b * 0.014);
     vec3 oralCol = clamp(deepRedFlesh * clamp(cavDepth, 0.28, 1.0), vec3(0.018, 0.002, 0.003), vec3(0.145, 0.022, 0.028));
 
-    // 2) Upper teeth rigidly fixed to cranial maxilla (NEVER deformed by jaw drop or lateral lip shift)
+    // 2) Upper dental arch curving outward & higher at corners, showing natural soft-focus enamel + pink scalloped upper gums
     float pitchPersp = -uHeadRot.y * 0.007;
     float midRestY = (uRestMouthTopY + uRestMouthBotY) * 0.5;
-    float upperEdgeOpen = uRestMouthTopY + 0.032 - 0.040 * ax * ax + pitchPersp;
-    float upperEdgeSmile = midRestY + 0.003 - 0.026 * ax * ax + pitchPersp;
+    float upperSmileArch = 0.084 * ax * ax;
+    float upperEdgeOpen = uRestMouthTopY + 0.046 + clamp(uUpperLipLift, 0.0, 1.0) * 0.014 - upperSmileArch + pitchPersp;
+    float upperEdgeSmile = midRestY + 0.008 - 0.092 * ax * ax + pitchPersp;
     float upperEdgeY = mix(upperEdgeOpen, upperEdgeSmile, closedBite);
-    float upperCrownH = mix(0.138, 0.106, archCurve);
-    float upperGumY = upperEdgeY - upperCrownH;
-    float upperFrac = clamp((y - upperGumY) / max(0.022, upperCrownH), 0.0, 1.0);
-    float upperVTop = mix(0.122, 0.195, uCurve);
-    float upperVBot = mix(0.295, 0.325, uCurve);
+    float upperCrownH = mix(0.084, 0.062, archCurve);
+    float gumScallop = sin(toothTexU * 26.0) * 0.004;
+    float upperGumY = upperEdgeY - upperCrownH + gumScallop;
+    float upperFrac = clamp((y - upperGumY) / max(0.020, upperCrownH), 0.0, 1.0);
+    float upperVTop = mix(0.128, 0.195, uCurve);
+    float upperVBot = mix(0.292, 0.328, uCurve);
     float upperTexV = (y < upperGumY)
-      ? mix(0.065, upperVTop, clamp(1.0 - (upperGumY - y) / 0.055, 0.0, 1.0))
+      ? mix(0.055, upperVTop, clamp(1.0 - (upperGumY - y) / 0.048, 0.0, 1.0))
       : mix(upperVTop, upperVBot, upperFrac);
 
-    vec3 rawUpper = sampleCrispTeeth(vec2(toothTexU, upperTexV));
-    vec3 whiteUpper = whitenToothEnamel(rawUpper, 1.14);
-    float archDepthShade = 1.0 - 0.34 * pow(archCurve, 1.35);
-    float upperLipShadow = mix(0.72, 1.0, smoothstep(0.0, 0.45, upperFrac));
-    float upperGumMask = y < upperGumY ? smoothstep(upperGumY + 0.004, upperGumY - 0.018, y) : 0.0;
-    vec3 upperGumCol = clamp(rawUpper * vec3(0.88, 0.54, 0.56), vec3(0.18, 0.06, 0.07), vec3(0.66, 0.32, 0.35));
-    vec3 upperToothCol = clamp(mix(whiteUpper, upperGumCol, upperGumMask) * archDepthShade * upperLipShadow, 0.0, 1.0);
+    vec3 rawUpper = sampleSoftTeeth(vec2(toothTexU, upperTexV));
+    vec3 whiteUpper = whitenToothEnamel(rawUpper, 1.11);
+    float archDepthShade = 1.0 - 0.34 * pow(archCurve, 1.55);
+    float upperLipShadow = mix(0.78, 1.0, smoothstep(-0.028, 0.022, y - upperGumY));
+    float wetEnamelSheen = exp(-pow((upperFrac - 0.56) / 0.16, 2.0)) * (1.0 - archCurve * 0.85) * 0.032;
+    float upperGumMask = y < upperGumY + 0.003 ? smoothstep(upperGumY + 0.005, upperGumY - 0.014, y) : 0.0;
+    vec3 naturalUpperGum = clamp(
+      mix(rawUpper, vec3(rawUpper.r * 1.04, rawUpper.g * 0.84, rawUpper.b * 0.84), 0.30),
+      vec3(0.32, 0.14, 0.16),
+      vec3(0.84, 0.48, 0.50)
+    );
+    vec3 upperToothCol = clamp((mix(whiteUpper, naturalUpperGum, upperGumMask) + vec3(wetEnamelSheen) * (1.0 - upperGumMask)) * archDepthShade * upperLipShadow, 0.0, 1.0);
 
-    // 3) Lower teeth rigidly fixed to dropping mandible (jawY), natural taller proportions & cleanly separated
-    float lowerTexU = clamp(0.5 + ax * 0.96, 0.08, 0.92);
-    float lowerUCurve = pow(abs(lowerTexU - 0.5) / 0.42, 1.8);
-    float lowerRestTipY = uRestMouthBotY - 0.014 - 0.028 * ax * ax;
-    float lowerSmileTipY = upperEdgeY + 0.011;
+    // 3) Lower dental arch curving cleanly upward toward corners + natural pink lower gums well above the lower lip border
+    float lowerTexU = clamp(0.5 + ax * 0.84, 0.03, 0.97);
+    float lowerUCurve = pow(abs(lowerTexU - 0.5) / 0.47, 1.75);
+    float lowerSmileArch = 0.072 * ax * ax;
+    float lowerRestTipY = uRestMouthBotY - 0.034 - lowerSmileArch;
+    float lowerSmileTipY = upperEdgeY + 0.012;
     float lowerTipLocalY = mix(lowerRestTipY, lowerSmileTipY, closedBite);
-    float lowerCrownH = mix(0.116, 0.090, archCurve);
-    float lowerGumLocalY = lowerTipLocalY + lowerCrownH;
-    float lowerFrac = clamp((jawY - lowerTipLocalY) / max(0.020, lowerCrownH), 0.0, 1.0);
-    float lowerVTip = mix(0.750, 0.665, lowerUCurve);
-    float lowerVGum = mix(0.900, 0.845, lowerUCurve);
+    float lowerCrownH = mix(0.072, 0.056, archCurve);
+    float lowerGumLocalY = lowerTipLocalY + lowerCrownH - gumScallop * 0.85;
+    float lowerFrac = clamp((jawY - lowerTipLocalY) / max(0.018, lowerCrownH), 0.0, 1.0);
+    float lowerVTip = mix(0.752, 0.665, lowerUCurve);
+    float lowerVGum = mix(0.896, 0.845, lowerUCurve);
     float lowerTexV = (jawY > lowerGumLocalY)
-      ? mix(lowerVGum, 0.96, clamp((jawY - lowerGumLocalY) / 0.050, 0.0, 1.0))
+      ? mix(lowerVGum, 0.955, clamp((jawY - lowerGumLocalY) / 0.044, 0.0, 1.0))
       : mix(lowerVTip, lowerVGum, lowerFrac);
 
-    vec3 rawLower = sampleCrispTeeth(vec2(lowerTexU, lowerTexV));
+    vec3 rawLower = sampleSoftTeeth(vec2(lowerTexU, lowerTexV));
     vec3 whiteLower = whitenToothEnamel(rawLower, 1.07);
-    float lowerLipShadow = mix(1.0, 0.74, smoothstep(0.68, 1.0, lowerFrac));
-    float lowerGumMask = jawY > lowerGumLocalY ? smoothstep(lowerGumLocalY - 0.004, lowerGumLocalY + 0.018, jawY) : 0.0;
-    vec3 lowerGumCol = clamp(rawLower * vec3(0.86, 0.52, 0.54), vec3(0.16, 0.05, 0.06), vec3(0.62, 0.29, 0.32));
-    vec3 lowerToothCol = clamp(mix(whiteLower, lowerGumCol, lowerGumMask) * archDepthShade * lowerLipShadow, 0.0, 1.0);
+    float lowerLipShadow = mix(1.0, 0.82, smoothstep(0.0, 0.032, jawY - lowerGumLocalY));
+    float lowerGumMask = jawY > lowerGumLocalY - 0.003 ? smoothstep(lowerGumLocalY - 0.005, lowerGumLocalY + 0.014, jawY) : 0.0;
+    vec3 naturalLowerGum = clamp(
+      mix(rawLower, vec3(rawLower.r * 1.02, rawLower.g * 0.82, rawLower.b * 0.82), 0.30),
+      vec3(0.30, 0.13, 0.15),
+      vec3(0.80, 0.46, 0.48)
+    );
+    vec3 lowerToothCol = clamp(mix(whiteLower, naturalLowerGum, lowerGumMask) * archDepthShade * lowerLipShadow, 0.0, 1.0);
 
-    // 4) Perspective-tracked real photographic tongue seated in the mandible behind lower teeth (clearly visible on wide mouth openings)
+    // 4) Perspective-tracked real photographic tongue seated behind lower teeth
     float tongueAdv = clamp(uTongueOut, 0.0, 1.0);
     float speechTongueWave = activeOpen > 0.05 ? sin(uTime * 3.8 + uRound * 2.0) * 0.005 : 0.0;
-    float openTongueRise = smoothstep(0.08, 0.72, activeOpen) * 0.068;
+    float openTongueRise = smoothstep(0.10, 0.72, activeOpen) * 0.062;
     float tongueLift = clamp(uRound, 0.0, 1.0) * 0.008 + tongueAdv * 0.036 + speechTongueWave;
     float tonguePerspX = x - uYaw * 0.15;
     float tongueY = jawY + uHeadRot.y * 0.010;
-    float tongueTopY = lowerTipLocalY - 0.024 - openTongueRise + 0.11 * tonguePerspX * tonguePerspX - tongueLift;
-    float tongueBotY = lowerGumLocalY + 0.062;
+    float tongueTopY = lowerTipLocalY - 0.022 - openTongueRise + 0.11 * tonguePerspX * tonguePerspX - tongueLift;
+    float tongueBotY = lowerGumLocalY + 0.052;
     float tongueLatMask = 1.0 - smoothstep(0.26 + tongueAdv * 0.06, 0.46 + tongueAdv * 0.08, abs(tonguePerspX));
     float tongueVertMask =
       smoothstep(tongueTopY - 0.012, tongueTopY + 0.010, tongueY) *
       (1.0 - smoothstep(tongueBotY - 0.010, tongueBotY + 0.012, tongueY));
-    float tongueShow = max(smoothstep(0.06, 0.20, activeOpen), smoothstep(0.03, 0.16, tongueAdv));
+    float tongueShow = max(smoothstep(0.08, 0.24, activeOpen), smoothstep(0.03, 0.16, tongueAdv));
     float tongueMask = tongueLatMask * tongueVertMask * tongueShow * (1.0 - closedBite * 0.92);
     float tNormY = clamp((tongueY - tongueTopY) / max(0.020, tongueBotY - tongueTopY), 0.0, 1.0);
     vec2 tongueUv = vec2(
       clamp(0.5 + tonguePerspX * 0.56, 0.24, 0.76),
       mix(0.535, 0.725, tNormY)
     );
-    vec3 rawTongue = sampleCrispTeeth(tongueUv);
+    vec3 rawTongue = sampleSoftTeeth(tongueUv);
     float wideOpenLight = 1.0 + smoothstep(0.28, 0.85, activeOpen) * 0.22;
     float tongueDepthShade = mix(0.54, 1.04, smoothstep(0.0, 0.48, tNormY)) * (1.0 - 0.20 * smoothstep(0.20, 0.46, abs(tonguePerspX))) * wideOpenLight;
     vec3 tongueCol = clamp(
@@ -957,37 +1102,36 @@ void main() {
       vec3(0.86, 0.50, 0.52)
     );
 
-    float yFeather = max(0.005, fwidth(y) * 1.6);
+    float yFeather = max(0.009, fwidth(y) * 2.1);
     float upperZone =
       (1.0 - smoothstep(upperEdgeY - yFeather, upperEdgeY + yFeather, y)) *
-      (1.0 - smoothstep(0.34, 0.44, absAx));
+      (1.0 - smoothstep(0.47, 0.56, absAx));
 
     float lowerShowGate = max(
-      max(smoothstep(0.045, 0.16, activeOpen), smoothstep(0.035, 0.12, uLowerLipDrop)),
+      max(smoothstep(0.035, 0.14, activeOpen), smoothstep(0.030, 0.10, uLowerLipDrop)),
       closedBite * 0.94
     );
-    // Strict vertical separation gap below upperEdgeY so upper & lower teeth NEVER fuse or overlap
-    float clearBelowUpper = smoothstep(upperEdgeY + 0.004, upperEdgeY + 0.011, y);
+    // Clean dark oral gap separating upper & lower teeth AND clean vestibule stop before the lower lip edge
+    float clearBelowUpper = smoothstep(upperEdgeY + 0.005, upperEdgeY + 0.020, y);
+    float lowerLipClear = 1.0 - smoothstep(0.82, 0.94, vMouthLipT);
     float lowerZone =
       smoothstep(lowerTipLocalY - yFeather, lowerTipLocalY + yFeather, jawY) *
       clearBelowUpper *
+      lowerLipClear *
       lowerShowGate *
-      (1.0 - smoothstep(0.31, 0.43, absAx));
-
-    // Keep lower teeth cleanly inside the lower labial vestibule so they sit BEHIND the opaque lower lip
-    float lowerEdgeGuard = 1.0 - smoothstep(botCut - 0.11, botCut - 0.02, vMouthLipT);
+      (1.0 - smoothstep(0.45, 0.54, absAx));
 
     oralCol = mix(oralCol, tongueCol, tongueMask * (1.0 - tongueAdv * 0.12));
-    oralCol = mix(oralCol, upperToothCol, upperZone * 0.97);
-    oralCol = mix(oralCol, lowerToothCol, lowerZone * lowerEdgeGuard * 0.95 * (1.0 - tongueAdv * 0.75) * (1.0 - clamp(uLipBite, 0.0, 1.0) * 0.85));
+    oralCol = mix(oralCol, upperToothCol, upperZone * 0.98);
+    oralCol = mix(oralCol, lowerToothCol, lowerZone * 0.97 * (1.0 - tongueAdv * 0.75) * (1.0 - clamp(uLipBite, 0.0, 1.0) * 0.85));
     if (tongueAdv > 0.06) {
       oralCol = mix(oralCol, tongueCol, tongueMask * smoothstep(0.06, 0.38, tongueAdv) * 0.94);
     }
 
-    // Crisp dark occlusal shadow line when teeth meet on a closed smile so upper & lower rows remain distinctly separated
+    // Soft occlusal shadow line when teeth meet on a closed smile so upper & lower rows remain distinctly separated
     if (closedBite > 0.08) {
-      float biteGap = exp(-pow((y - (upperEdgeY + 0.005)) / 0.0032, 2.0));
-      oralCol = mix(oralCol, vec3(0.025, 0.004, 0.006), biteGap * closedBite * 0.84 * (1.0 - smoothstep(0.32, 0.43, absAx)));
+      float biteGap = exp(-pow((y - (upperEdgeY + 0.005)) / 0.0038, 2.0));
+      oralCol = mix(oralCol, vec3(0.025, 0.004, 0.006), biteGap * closedBite * 0.82 * (1.0 - smoothstep(0.44, 0.54, absAx)));
     }
 
     if (uLipBite > 0.05) {
@@ -996,17 +1140,12 @@ void main() {
       oralCol = mix(oralCol, tuckedLipCol, biteBand * clamp(uLipBite, 0.0, 1.0) * 0.82);
     }
 
-    float topAO = mix(0.62, 1.0, smoothstep(0.0, 0.14, vMouthLipT));
-    float botAO = mix(0.64, 1.0, smoothstep(botCut, botCut - 0.16, vMouthLipT));
-    float sideAO = 1.0 - 0.86 * smoothstep(0.46, 0.88, absX);
-    float cavityLight = mix(0.80, 1.0, max(smoothstep(0.02, 0.22, activeOpen), closedBite));
-    vec3 buccalShadow = clamp(mix(vec3(0.025, 0.004, 0.006), uLipColor * 0.24, 0.28), vec3(0.015, 0.002, 0.004), vec3(0.14, 0.05, 0.05));
-    oralCol = mix(buccalShadow, oralCol, topAO * botAO * sideAO * cavityLight);
-
-    // Homogeneous natural lip-rim edge shading matching real lip pigment into oral cavity depth
-    float rimSoft = smoothstep(0.0, 0.22, topRim * botRim * sideAlmondFade);
-    vec3 rimHomogCol = clamp(mix(vec3(0.045, 0.008, 0.012), uLipColor * 0.34, 0.35), vec3(0.02, 0.004, 0.006), vec3(0.20, 0.07, 0.07));
-    oralCol = mix(rimHomogCol, oralCol, rimSoft);
+    // Crisp inner-lip mucosal contact shadow along top and bottom borders (zero blurry bleeding into lower lip)
+    float topAO = mix(0.74, 1.0, smoothstep(0.0, 0.08, vMouthLipT));
+    float botAO = mix(0.56, 1.0, smoothstep(botCut, botCut - 0.11, vMouthLipT));
+    float sideAO = 1.0 - 0.42 * smoothstep(0.72, 0.98, absX);
+    float cavityLight = mix(0.86, 1.0, max(smoothstep(0.02, 0.22, activeOpen), closedBite));
+    oralCol *= clamp(topAO * botAO * sideAO * cavityLight, 0.22, 1.0);
 
     fragColor = vec4(oralCol, openMask * lipRimFeather * fgAlpha);
     return;
@@ -1030,8 +1169,7 @@ void main() {
     uREyeLowerA,
     uREyeLowerB,
     uRIrisRad,
-    uRScleraNeg,
-    uRScleraPos,
+    uEyeBrowFloor.x,
     uBlinkR,
     -1.0,
     uAspect
@@ -1047,8 +1185,7 @@ void main() {
     uLEyeLowerA,
     uLEyeLowerB,
     uLIrisRad,
-    uLScleraNeg,
-    uLScleraPos,
+    uEyeBrowFloor.y,
     uBlinkL,
     1.0,
     uAspect
@@ -1056,18 +1193,21 @@ void main() {
 
   col = applyPhysicalEffects(col, vFaceCoord);
 
-  // Subtle homogeneous mouth-rim harmonizing smoothing along outer lip corners when opening/stretching mouth
-  float mouthEdgeHarm = exp(-pow((abs(vRigidMouth.x) - 0.88) / 0.22, 2.0)) *
-    exp(-pow((vRigidMouth.y - (uRestMouthTopY + uRestMouthBotY) * 0.5) / 0.14, 2.0));
-  float lipToneMatch = clamp(0.14 * mouthEdgeHarm * smoothstep(0.08, 0.55, uOpen + uWide * 0.5), 0.0, 0.18);
-  col = mix(col, mix(col, uLipColor * 0.82, 0.45), lipToneMatch);
+  // Subtle directional face volume modeling strictly inside face skin (NEVER darkens ears or background!)
+  if (abs(vHeadTurn) > 0.01) {
+    float faceVolumeZone = (1.0 - smoothstep(0.68, 0.96, abs(vFaceCoord.x))) *
+      (1.0 - smoothstep(0.76, 1.02, abs(vFaceCoord.y)));
+    float turnShade = clamp(vFaceCoord.x * vHeadTurn * 0.09, -0.032, 0.032) * faceVolumeZone * fgAlpha;
+    col = clamp(col * (1.0 - turnShade), 0.0, 1.0);
+  }
 
-  // Subtle larynx-centered throat swallow shadow wave when swallowing saliva
+  // Traveling larynx-centered throat swallow shadow wave when swallowing saliva
   if (uSwallow > 0.01) {
-    float applePosY = uAdamAppleCoord.y - uSwallow * 0.14;
-    float swBand = exp(-pow((vFaceCoord.y - applePosY) / 0.15, 2.0)) *
-      (1.0 - smoothstep(0.10, 0.34, abs(vFaceCoord.x - uAdamAppleCoord.x)));
-    col *= 1.0 - swBand * clamp(uSwallow, 0.0, 1.0) * 0.095;
+    float swWave = uSwallowPhase > 0.005 ? sin(clamp(uSwallowPhase, 0.0, 1.0) * 3.14159265) : clamp(uSwallow, 0.0, 1.0);
+    float applePosY = uAdamAppleCoord.y - swWave * 0.24;
+    float swBand = exp(-pow((vFaceCoord.y - applePosY) / 0.14, 2.0)) *
+      (1.0 - smoothstep(0.09, 0.32, abs(vFaceCoord.x - uAdamAppleCoord.x)));
+    col *= 1.0 - swBand * clamp(uSwallow, 0.0, 1.6) * 0.125;
   }
 
   // Crisp tight edge feather without a wide blurry halo moat against detailed backgrounds
@@ -1233,9 +1373,12 @@ function buildPortraitLayers(
       let fg: number;
       if (hasSegMask) {
         const seg = sampleSeg(nx, ny);
-        segArr[py * W + px] = Math.max(seg, geomEnvelope * 0.72);
-        const segTight = smoothstep(0.24, 0.5, seg);
-        fg = Math.max(faceCore, segTight, bodyMask * 0.75);
+        const nearTopBorder = ny < crownTopY + face.faceH * 0.16;
+        segArr[py * W + px] = nearTopBorder ? seg : Math.max(seg, geomEnvelope * 0.55);
+        const segTight = nearTopBorder ? smoothstep(0.2, 0.48, seg) : smoothstep(0.26, 0.52, seg);
+        fg = nearTopBorder
+          ? Math.max(faceCore, segTight)
+          : Math.max(faceCore, segTight, bodyMask * 0.75);
       } else {
         fg = Math.max(faceCore, headHalo, bodyMask);
         segArr[py * W + px] = fg;
@@ -1534,13 +1677,11 @@ function evalLidCurveJS(
 }
 
 /**
-/**
- * Builds an offscreen 2x1 eye-cutout atlas (right eye tile + left eye tile):
- * - Samples ONLY light, clean left-of-cornea and right-of-cornea sclera tones (never caruncle red or cornea edge).
- * - Fills the full eyeball square with Left Sclera Color on the left, Right Sclera Color on the right, and a smooth
- *   horizontal gradient blending both across the center.
- * - Extracts ONLY the unmodified circular cornea+iris+pupil (completing any lid-clipped iris arc symmetrically)
- *   and places it centered cleanly inside that square.
+ * Builds a 2x2 Eye Atlas (`384 x 384`) with two distinct RGBA layers per eye:
+ * - Top row (`y: 0..192`): Clean extracted circular cornea+iris+pupil (`alpha = 0` outside iris),
+ *   reconstructing any lid-clipped upper/lower iris pixels radially/horizontally (never flipping bottom catchlights).
+ * - Bottom row (`y: 192..384`): Real photo-matched surrounding-sclera inpaint filling ONLY the vacated cornea region
+ *   via inverse-distance weighting from the actual exposed sclera pixels around that photo's cornea.
  */
 function buildEyeCutoutAtlas(img: HTMLImageElement, face: FacePts): HTMLCanvasElement {
   const TILE_W = 192;
@@ -1550,7 +1691,7 @@ function buildEyeCutoutAtlas(img: HTMLImageElement, face: FacePts): HTMLCanvasEl
 
   const atlas = document.createElement("canvas");
   atlas.width = TILE_W * 2;
-  atlas.height = TILE_H;
+  atlas.height = TILE_H * 2;
   const aCtx = atlas.getContext("2d");
   if (!aCtx) return atlas;
 
@@ -1609,7 +1750,6 @@ function buildEyeCutoutAtlas(img: HTMLImageElement, face: FacePts): HTMLCanvasEl
     const dpY = eyePupil[1] - eyeCenter[1];
     const pupilEx = (dpX * eyeAxis.ux + dpY * eyeAxis.uy) / halfW;
     const pupilEy = (dpX * eyeAxis.vx + dpY * eyeAxis.vy) / scaleY;
-    const irisExRad = Math.max(0.18, irisRad / halfW);
 
     const toNormPhoto = (ex: number, ey: number): [number, number] => {
       const dx = eyeAxis.ux * (ex * halfW) + eyeAxis.vx * (ey * scaleY);
@@ -1617,128 +1757,158 @@ function buildEyeCutoutAtlas(img: HTMLImageElement, face: FacePts): HTMLCanvasEl
       return [eyeCenter[0] + dx / aspect, eyeCenter[1] + dy];
     };
 
-    // Sample clean light sclera tones strictly left-of-cornea & right-of-cornea (never cornea edge, lashes, or red caruncle)
-    type ScleraSample = { score: number; r: number; g: number; b: number; lum: number };
-    const leftCands: ScleraSample[] = [];
-    const rightCands: ScleraSample[] = [];
+    // 1) Collect actual exposed surrounding sclera perimeter samples without discarding shaded/warm real tones
+    type ScleraPerimeterPt = {
+      ex: number;
+      ey: number;
+      r: number;
+      g: number;
+      b: number;
+      weight: number;
+    };
+    const perimSamples: ScleraPerimeterPt[] = [];
 
-    for (let ey = -0.85; ey <= 0.85; ey += 0.05) {
-      for (let ex = -0.78; ex <= 0.78; ex += 0.04) {
+    for (let ey = -0.78; ey <= 0.78; ey += 0.045) {
+      for (let ex = -0.88; ex <= 0.88; ex += 0.04) {
         const sEx = ex * outerSign;
-        // Skip inner corner caruncle zone & outer corner lash wing
-        if (sEx < -0.62 || sEx > 0.76) continue;
+        if (sEx < -0.68 || sEx > 0.82) continue;
         const topY = evalLidCurveJS(ex, curve.upperArch);
         const botY = evalLidCurveJS(ex, curve.lowerArch);
-        const safeTop = topY + Math.max(0.18, (botY - topY) * 0.22);
-        const safeBot = botY - Math.max(0.15, (botY - topY) * 0.18);
+        const safeTop = topY + Math.max(0.12, (botY - topY) * 0.14);
+        const safeBot = botY - Math.max(0.09, (botY - topY) * 0.12);
         if (ey < safeTop || ey > safeBot) continue;
 
         const [nx, ny] = toNormPhoto(ex, ey);
         const distP = Math.hypot((nx - eyePupil[0]) * aspect, ny - eyePupil[1]);
-        if (distP < irisRad * 1.28) continue;
+        if (distP < irisRad * 1.24 || distP > irisRad * 2.15) continue;
 
         const [r, g, b] = sampleBilinear(nx, ny);
-        if (r - g > 16 && r - b > 22) continue;
         const lum = r * 0.299 + g * 0.587 + b * 0.114;
-        if (lum < 72) continue;
-        const maxC = Math.max(r, g, b);
-        const minC = Math.min(r, g, b);
-        const sat = maxC > 0 ? (maxC - minC) / maxC : 0;
-        const redness = Math.max(0, r - (g + b) * 0.5);
-        const cand: ScleraSample = { score: lum - sat * 45 - redness * 1.25, r, g, b, lum };
+        if (lum < 52) continue;
+        const redness = r - (g + b) * 0.5;
+        if (redness > 26) continue;
+        // Prioritize pixels closest to the clean lateral limbus boundary so evacuated circle preserves local sclera gradient identically
+        const nearLimbusBoost = distP < irisRad * 1.54 ? 1.8 : 1.0;
 
-        if (ex <= pupilEx - irisExRad * 1.15) {
-          leftCands.push(cand);
-        } else if (ex >= pupilEx + irisExRad * 1.15) {
-          rightCands.push(cand);
-        }
+        perimSamples.push({
+          ex,
+          ey,
+          r,
+          g,
+          b,
+          weight: nearLimbusBoost,
+        });
       }
     }
 
-    const pickLightSclera = (
-      cands: ScleraSample[],
-      fb: [number, number, number],
-    ): [number, number, number] => {
-      if (cands.length < 3) return fb;
-      const sorted = [...cands].sort((a, b) => a.score - b.score);
-      const start = Math.floor(sorted.length * 0.55);
-      const end = Math.max(start + 1, Math.floor(sorted.length * 0.9));
-      let sr = 0;
-      let sg = 0;
-      let sb = 0;
-      let n = 0;
-      for (let i = start; i < end; i++) {
-        sr += sorted[i]!.r;
-        sg += sorted[i]!.g;
-        sb += sorted[i]!.b;
-        n++;
-      }
-      return n > 0 ? [sr / n, sg / n, sb / n] : fb;
-    };
+    const fbMid: [number, number, number] = [
+      (fallbackNeg[0] + fallbackPos[0]) * 0.5,
+      (fallbackNeg[1] + fallbackPos[1]) * 0.5,
+      (fallbackNeg[2] + fallbackPos[2]) * 0.5,
+    ];
 
-    const rawLeft = pickLightSclera(leftCands, fallbackNeg);
-    const rawRight = pickLightSclera(rightCands, fallbackPos);
-    const lLum = rawLeft[0] * 0.299 + rawLeft[1] * 0.587 + rawLeft[2] * 0.114;
-    const rLum = rawRight[0] * 0.299 + rawRight[1] * 0.587 + rawRight[2] * 0.114;
-    const maxLum = Math.max(lLum, rLum, 130);
-    // Keep both left & right sclera clean, light and naturally matched without harsh contrast seam
-    const stabilizeSide = (
-      rgb: [number, number, number],
-      lum: number,
-    ): [number, number, number] => {
-      const lift = lum < maxLum * 0.92 ? (maxLum * 0.94) / Math.max(40, lum) : 1;
-      const clampedLift = Math.min(1.24, Math.max(1.0, lift));
-      return [
-        Math.min(250, rgb[0] * clampedLift),
-        Math.min(249, rgb[1] * clampedLift),
-        Math.min(248, rgb[2] * clampedLift),
-      ];
-    };
-    const leftColor = stabilizeSide(rawLeft, lLum);
-    const rightColor = stabilizeSide(rawRight, rLum);
+    const corneaImg = aCtx.createImageData(TILE_W, TILE_H);
+    const scleraPatchImg = aCtx.createImageData(TILE_W, TILE_H);
 
-    const tileImg = aCtx.createImageData(TILE_W, TILE_H);
     for (let ly = 0; ly < TILE_H; ly++) {
       const ey = ((ly + 0.5) / TILE_H - 0.5) * 2 * EY_SPAN;
       for (let lx = 0; lx < TILE_W; lx++) {
         const ex = ((lx + 0.5) / TILE_W - 0.5) * 2 * EX_SPAN;
         const o4 = (ly * TILE_W + lx) * 4;
 
-        // Smooth horizontal gradient across central cornea zone blending left sclera into right sclera
-        const gradT = smoothstep(-irisExRad * 1.1, irisExRad * 1.1, ex - pupilEx);
-        let sr = leftColor[0] * (1 - gradT) + rightColor[0] * gradT;
-        let sg = leftColor[1] * (1 - gradT) + rightColor[1] * gradT;
-        let sb = leftColor[2] * (1 - gradT) + rightColor[2] * gradT;
+        // A) Bottom-row tile: tight local sclera interpolation preserving exact photo sclera tone & shading gradient
+        let pr = fbMid[0];
+        let pg = fbMid[1];
+        let pb = fbMid[2];
+        if (perimSamples.length >= 3) {
+          let sr = 0;
+          let sg = 0;
+          let sb = 0;
+          let swSum = 0;
+          for (let i = 0; i < perimSamples.length; i++) {
+            const sp = perimSamples[i]!;
+            const dx = (ex - sp.ex) * 1.05;
+            const dy = (ey - sp.ey) * 0.82;
+            const d2 = dx * dx + dy * dy + 0.018;
+            const w = sp.weight / (d2 * d2 * d2);
+            sr += sp.r * w;
+            sg += sp.g * w;
+            sb += sp.b * w;
+            swSum += w;
+          }
+          if (swSum > 0) {
+            pr = sr / swSum;
+            pg = sg / swSum;
+            pb = sb / swSum;
+          }
+        } else {
+          const gradT = smoothstep(-0.6, 0.6, ex - pupilEx);
+          pr = fallbackNeg[0] * (1 - gradT) + fallbackPos[0] * gradT;
+          pg = fallbackNeg[1] * (1 - gradT) + fallbackPos[1] * gradT;
+          pb = fallbackNeg[2] * (1 - gradT) + fallbackPos[2] * gradT;
+        }
+        scleraPatchImg.data[o4] = Math.round(Math.max(0, Math.min(255, pr)));
+        scleraPatchImg.data[o4 + 1] = Math.round(Math.max(0, Math.min(255, pg)));
+        scleraPatchImg.data[o4 + 2] = Math.round(Math.max(0, Math.min(255, pb)));
+        scleraPatchImg.data[o4 + 3] = 255;
 
-        // Extract ONLY unmodified circular cornea + iris + pupil (completing any lid-clipped iris arc symmetrically)
+        // B) Top-row tile: strictly cropped circular cornea+iris+pupil (zero outer sclera rim captured)
         const [nx, ny] = toNormPhoto(ex, ey);
         const distP = Math.hypot((nx - eyePupil[0]) * aspect, ny - eyePupil[1]);
-        const irisAlpha = 1 - smoothstep(irisRad * 0.86, irisRad * 0.99, distP);
-        if (irisAlpha > 0.002) {
+        const corneaAlpha = 1 - smoothstep(irisRad * 0.88, irisRad * 1.01, distP);
+        if (corneaAlpha > 0.002) {
           const topY = evalLidCurveJS(ex, curve.upperArch);
           const botY = evalLidCurveJS(ex, curve.lowerArch);
-          const safeTop = topY + Math.max(0.14, (botY - topY) * 0.14);
-          const safeBot = botY - Math.max(0.1, (botY - topY) * 0.1);
-          let sampleEy = ey;
-          if (ey < safeTop) {
-            sampleEy = Math.min(safeBot, pupilEy + Math.abs(pupilEy - ey));
-          } else if (ey > safeBot) {
-            sampleEy = Math.max(safeTop, pupilEy - Math.abs(ey - pupilEy));
-          }
-          const [ix, iy] = toNormPhoto(ex, sampleEy);
-          const [ir, ig, ib] = sampleBilinear(ix, iy);
-          sr = sr * (1 - irisAlpha) + ir * irisAlpha;
-          sg = sg * (1 - irisAlpha) + ig * irisAlpha;
-          sb = sb * (1 - irisAlpha) + ib * irisAlpha;
-        }
+          const safeTop = topY + Math.max(0.04, (botY - topY) * 0.05);
+          const safeBot = botY - Math.max(0.03, (botY - topY) * 0.04);
 
-        tileImg.data[o4] = Math.round(Math.max(0, Math.min(255, sr)));
-        tileImg.data[o4 + 1] = Math.round(Math.max(0, Math.min(255, sg)));
-        tileImg.data[o4 + 2] = Math.round(Math.max(0, Math.min(255, sb)));
-        tileImg.data[o4 + 3] = 255;
+          let ir: number;
+          let ig: number;
+          let ib: number;
+
+          if (ey >= safeTop && ey <= safeBot) {
+            const [ix, iy] = toNormPhoto(ex, ey);
+            [ir, ig, ib] = sampleBilinear(ix, iy);
+          } else {
+            // Reconstruct ONLY lid-clipped edge using crisp mirrored texture from visible iris sectors (never blurry flat rings)
+            const mirEx = 2 * pupilEx - ex;
+            const mirTop = evalLidCurveJS(mirEx, curve.upperArch) + 0.06;
+            const mirBot = evalLidCurveJS(mirEx, curve.lowerArch) - 0.04;
+            const dFromCenterEx = ex - pupilEx;
+            const dFromCenterEy = ey - pupilEy;
+            const rotEy = pupilEy + Math.abs(dFromCenterEy) * (ey < pupilEy ? 0.55 : -0.55);
+            const [rx, ry] = toNormPhoto(
+              pupilEx + dFromCenterEx,
+              Math.min(mirBot, Math.max(mirTop, rotEy)),
+            );
+            const [rr, rg, rb] = sampleBilinear(rx, ry);
+            if (ey >= mirTop && ey <= mirBot) {
+              const [mx, my] = toNormPhoto(mirEx, ey);
+              const [mr, mg, mb] = sampleBilinear(mx, my);
+              ir = rr * 0.55 + mr * 0.45;
+              ig = rg * 0.55 + mg * 0.45;
+              ib = rb * 0.55 + mb * 0.45;
+            } else {
+              ir = rr;
+              ig = rg;
+              ib = rb;
+            }
+          }
+
+          corneaImg.data[o4] = Math.round(Math.max(0, Math.min(255, ir)));
+          corneaImg.data[o4 + 1] = Math.round(Math.max(0, Math.min(255, ig)));
+          corneaImg.data[o4 + 2] = Math.round(Math.max(0, Math.min(255, ib)));
+          corneaImg.data[o4 + 3] = Math.round(corneaAlpha * 255);
+        } else {
+          corneaImg.data[o4] = 0;
+          corneaImg.data[o4 + 1] = 0;
+          corneaImg.data[o4 + 2] = 0;
+          corneaImg.data[o4 + 3] = 0;
+        }
       }
     }
-    aCtx.putImageData(tileImg, offsetX, 0);
+    aCtx.putImageData(corneaImg, offsetX, 0);
+    aCtx.putImageData(scleraPatchImg, offsetX, TILE_H);
   };
 
   renderTile(
@@ -1815,11 +1985,14 @@ function buildAvatarMeshes(face: FacePts): BuiltMeshes {
   const craniumY = (face.hairTop[1] + chin[1]) * 0.42;
   const radX = Math.max(face.faceW * 1.45, hairSpanHalfW * 1.65);
   const radY = Math.max(face.faceH * 1.28, (chin[1] - face.hairTop[1]) * 0.96);
-  const neckFadeStartY = chin[1] + face.faceH * 0.08;
-  // Stop cranium/neck turn cleanly ABOVE lowerNeck so head turns never twist or pinch the trapezius or shoulders
-  const neckFadeEndY = Math.min(
-    0.96,
-    Math.max(chin[1] + face.faceH * 0.22, face.lowerNeck[1] - face.faceH * 0.02),
+  const neckFadeStartY = chin[1] + face.faceH * 0.015;
+  // Strictly partition headW (face+cranium), neckW (central cervical cylinder strictly above trapezius), and torsoW (trapezius+shoulders)
+  const neckWallEndY = face.neckInflectionY ?? face.lowerNeck[1];
+  const neckFadeEndY = Math.min(chin[1] + face.faceH * 0.095, neckWallEndY - face.faceH * 0.04);
+  const trapSpanHalf = Math.abs(face.leftTrapezius[0] - face.rightTrapezius[0]) * aspect * 0.45;
+  const neckColHalfW = Math.min(
+    face.faceW * 0.34,
+    Math.max(face.faceW * 0.25, trapSpanHalf * 0.78),
   );
 
   // Full segmented hair & cranium silhouette locks solidly to headW=1.0 so hair stays 100% consistent with head
@@ -1832,12 +2005,18 @@ function buildAvatarMeshes(face: FacePts): BuiltMeshes {
     const sy = Math.max(0, Math.min(sh - 1, Math.round(ny * (sh - 1))));
     let best = mask[sy * sw + sx] ?? 0;
     for (const [dx, dy] of [
+      [-10, 0],
+      [10, 0],
+      [0, -10],
+      [0, 10],
+      [-7, -7],
+      [7, 7],
+      [-7, 7],
+      [7, -7],
       [-4, 0],
       [4, 0],
       [0, -4],
       [0, 4],
-      [-2, -2],
-      [2, 2],
     ] as const) {
       const mx = Math.max(0, Math.min(sw - 1, sx + dx));
       const my = Math.max(0, Math.min(sh - 1, sy + dy));
@@ -1845,100 +2024,60 @@ function buildAvatarMeshes(face: FacePts): BuiltMeshes {
     }
     return best;
   };
+  const hasSegMask = !!(face.segMask && face.segWidth && face.segHeight);
   const computeHeadWeight = (nx: number, ny: number): number => {
     const rx = ((nx - craniumX) * aspect) / Math.max(0.08, radX);
     const ry = (ny - craniumY) / Math.max(0.08, radY);
-    const oval =
-      ny <= chin[1]
-        ? 1 - smoothstep(1.38, 2.15, Math.hypot(rx, ry))
-        : 1 - smoothstep(1.16, 1.92, Math.hypot(rx, ry));
+    const oval = hasSegMask
+      ? ny <= chin[1]
+        ? 1 - smoothstep(1.22, 1.72, Math.hypot(rx, ry))
+        : 1 - smoothstep(1.02, 1.38, Math.hypot(rx, ry))
+      : ny <= chin[1]
+        ? 1 - smoothstep(1.28, 1.96, Math.hypot(rx, ry))
+        : 1 - smoothstep(1.1, 1.72, Math.hypot(rx, ry));
     const latOffset = Math.abs((nx - face.center[0]) * aspect);
     const hairYMax =
-      latOffset > face.faceW * 0.24 ? chin[1] + face.faceH * 0.3 : chin[1] + face.faceH * 0.06;
-    const upperHairSeg = ny <= hairYMax && sampleHairSegMax(nx, ny) > 0.14 ? 1 : 0;
+      latOffset > face.faceW * 0.24 ? chin[1] + face.faceH * 0.26 : chin[1] + face.faceH * 0.05;
+    const upperHairSeg = ny <= hairYMax && sampleHairSegMax(nx, ny) > 0.06 ? 1 : 0;
     const radial = Math.max(oval, upperHairSeg);
     const neckFade = ny > neckFadeStartY ? 1 - smoothstep(neckFadeStartY, neckFadeEndY, ny) : 1;
-    return radial * neckFade;
+    const lateralCut =
+      ny > chin[1] + face.faceH * 0.05 && latOffset > face.faceW * 0.58
+        ? 1 - smoothstep(face.faceW * 0.58, face.faceW * 0.78, latOffset)
+        : 1;
+    return radial * neckFade * lateralCut;
+  };
+  const computeNeckWeight = (nx: number, ny: number): number => {
+    const vertStart = smoothstep(chin[1] - face.faceH * 0.02, chin[1] + face.faceH * 0.065, ny);
+    const vertEnd =
+      1 - smoothstep(neckWallEndY - face.faceH * 0.075, neckWallEndY - face.faceH * 0.025, ny);
+    const lat = Math.abs((nx - face.neckBase[0]) * aspect);
+    const latMask = 1 - smoothstep(neckColHalfW * 0.8, neckColHalfW * 1.12, lat);
+    return vertStart * vertEnd * latMask;
   };
 
-  // 5-point anatomical yoke: lowerNeck -> rightTrapezius -> rightShoulder & lowerNeck -> leftTrapezius -> leftShoulder
-  const shoulderHalfSpan = Math.max(
-    face.faceW * 1.42,
-    Math.hypot(
-      (face.rightShoulder[0] - face.lowerNeck[0]) * aspect,
-      face.rightShoulder[1] - face.lowerNeck[1],
-    ) * 1.35,
-    Math.hypot(
-      (face.leftShoulder[0] - face.lowerNeck[0]) * aspect,
-      face.leftShoulder[1] - face.lowerNeck[1],
-    ) * 1.35,
-  );
-  const computeShoulderRidge = (nx: number, ny: number): number => {
-    if (ny < chin[1] + face.faceH * 0.06) return 0;
-    const dRightTrap = pointToSegmentDist(
-      nx,
-      ny,
-      face.lowerNeck[0],
-      face.lowerNeck[1],
-      face.rightTrapezius[0],
-      face.rightTrapezius[1],
-      aspect,
-    );
-    const dRightOuter = pointToSegmentDist(
-      nx,
-      ny,
-      face.rightTrapezius[0],
-      face.rightTrapezius[1],
-      face.rightShoulder[0],
-      face.rightShoulder[1],
-      aspect,
-    );
-    const dLeftTrap = pointToSegmentDist(
-      nx,
-      ny,
-      face.lowerNeck[0],
-      face.lowerNeck[1],
-      face.leftTrapezius[0],
-      face.leftTrapezius[1],
-      aspect,
-    );
-    const dLeftOuter = pointToSegmentDist(
-      nx,
-      ny,
-      face.leftTrapezius[0],
-      face.leftTrapezius[1],
-      face.leftShoulder[0],
-      face.leftShoulder[1],
-      aspect,
-    );
-    const nearYoke =
-      1 -
-      smoothstep(
-        face.faceW * 0.24,
-        face.faceW * 0.86,
-        Math.min(dRightTrap, dRightOuter, dLeftTrap, dLeftOuter),
-      );
-    const belowUpperNeck = smoothstep(
-      Math.max(chin[1] + 0.06 * face.faceH, face.lowerNeck[1] - 0.08 * face.faceH),
-      face.lowerNeck[1] + 0.04 * face.faceH,
-      ny,
-    );
-    return Math.max(0, Math.min(1, nearYoke * belowUpperNeck));
-  };
-
-  // Pure rounded elliptical mandible weight so jaw & chin deform smoothly in a curved oval arc
+  // Classic elliptical mandible grip centered on real chin/jaw, with soft sub-chin taper so speaking opens jaw cleanly without pulling neck
   const lipBotY = point(17)[1];
-  const jawCenterY = (lipBotY + chin[1]) * 0.52;
-  const jawRx = Math.max(0.03, face.faceW * 0.4);
-  const jawRy = Math.max(face.faceH * 0.18, (chin[1] - mouthCenter[1]) * 1.16);
+  const jawCenterY = (lipBotY + chin[1]) * 0.5;
+  const jawRx = Math.max(0.03, face.faceW * 0.42);
+  const jawRy = Math.max(face.faceH * 0.19, (chin[1] - mouthCenter[1]) * 1.18);
+  const adamLimitY = Math.min(
+    neckWallEndY - face.faceH * 0.02,
+    face.adamApple[1] - face.faceH * 0.02,
+  );
   const computeMandibleWeight = (nx: number, ny: number, mpY?: number): number => {
     const eR = Math.hypot(((nx - mouthCenter[0]) * aspect) / jawRx, (ny - jawCenterY) / jawRy);
-    const ovalBell = 1 - smoothstep(0.28, 1.06, eR);
+    const ovalBell = 1 - smoothstep(0.26, 1.08, eR);
     const vertUp =
       mpY !== undefined
         ? smoothstep(-face.mouthH * 0.1, face.mouthH * 0.35, mpY)
         : smoothstep(mouthCenter[1] - 0.01 * face.faceH, lipBotY, ny);
-    return ovalBell * vertUp;
+    const chinStopY = Math.min(adamLimitY, chin[1] + face.faceH * 0.105);
+    const subChinFade =
+      ny <= chin[1] + face.faceH * 0.022
+        ? 1
+        : 1 - smoothstep(chin[1] + face.faceH * 0.022, chinStopY, ny);
+    return ovalBell * vertUp * subChinFade;
   };
 
   // 1) Dense 52 x 52 Outer Portrait Grid with Smooth Continuous Weights
@@ -1952,27 +2091,20 @@ function buildAvatarMeshes(face: FacePts): BuiltMeshes {
   let ptr = 0;
   for (let iy = 0; iy <= GY; iy++) {
     const ny = iy / GY;
-    const borderY = smoothstep(0.0, 0.025, ny) * smoothstep(1.0, 0.975, ny);
+    const borderY = smoothstep(0.0, 0.015, ny) * smoothstep(1.0, 0.985, ny);
     for (let ix = 0; ix <= GX; ix++) {
       const nx = ix / GX;
-      const borderX = smoothstep(0.0, 0.025, nx) * smoothstep(1.0, 0.975, nx);
+      const borderX = smoothstep(0.0, 0.015, nx) * smoothstep(1.0, 0.985, nx);
       const borderMask = borderX * borderY;
 
       const headW = computeHeadWeight(nx, ny) * borderMask;
+      const neckW = computeNeckWeight(nx, ny) * borderMask;
       const underChinJawW = computeMandibleWeight(nx, ny) * borderMask;
-      const shoulderRidgeW = computeShoulderRidge(nx, ny) * borderMask;
-
+      // Cohesive trapezius & shoulder plateau starting strictly below the cervical neck wall
       const torsoW =
-        Math.max(
-          shoulderRidgeW * 0.85,
-          smoothstep(chin[1] + 0.06 * face.faceH, neckFadeEndY + 0.04 * face.faceH, ny) *
-            (1 -
-              smoothstep(
-                shoulderHalfSpan * 0.72,
-                Math.min(0.98, shoulderHalfSpan * 1.18),
-                Math.abs((nx - neckPivot[0]) * aspect),
-              )),
-        ) * borderMask;
+        smoothstep(neckWallEndY - 0.04 * face.faceH, neckWallEndY + 0.02 * face.faceH, ny) *
+        (1 - neckW) *
+        borderMask;
 
       let h0W = 0;
       if (hand0) {
@@ -2021,7 +2153,7 @@ function buildAvatarMeshes(face: FacePts): BuiltMeshes {
       baseVerts[ptr++] = 0;
       baseVerts[ptr++] = h0W;
       baseVerts[ptr++] = h1W;
-      baseVerts[ptr++] = shoulderRidgeW;
+      baseVerts[ptr++] = neckW;
       baseVerts[ptr++] = 0;
     }
   }
@@ -2154,7 +2286,12 @@ function buildAvatarMeshes(face: FacePts): BuiltMeshes {
 
     let upperLipW =
       inMouthSpan && mp.y < ySlit
-        ? (1 - smoothstep(0.0, face.mouthH * 0.95, Math.max(0, yOuterUp - mp.y))) *
+        ? (1 -
+            smoothstep(
+              0.0,
+              Math.max(face.mouthH * 1.15, face.faceH * 0.065),
+              Math.max(0, yOuterUp - mp.y),
+            )) *
           (0.36 + 0.64 * lipCenterArch) *
           localScale
         : 0;
@@ -2178,7 +2315,7 @@ function buildAvatarMeshes(face: FacePts): BuiltMeshes {
       dist2(nx, ny, rCorner[0], rCorner[1]),
       dist2(nx, ny, lCorner[0], lCorner[1]),
     );
-    let cornerW = (1 - smoothstep(0.0, face.mouthW * 0.72, dCorners)) * localScale;
+    let cornerW = (1 - smoothstep(0.0, face.mouthW * 0.85, dCorners)) * localScale;
     if (
       innerLipSet.has(i) ||
       outerUpperSet.has(i) ||
@@ -2188,7 +2325,7 @@ function buildAvatarMeshes(face: FacePts): BuiltMeshes {
     ) {
       cornerW = Math.max(
         cornerW,
-        (1 - smoothstep(0.0, face.mouthW * 0.76, dMouth)) * 0.9 * localScale,
+        (1 - smoothstep(0.0, face.mouthW * 0.85, dMouth)) * 0.9 * localScale,
       );
     }
 
@@ -2213,15 +2350,11 @@ function buildAvatarMeshes(face: FacePts): BuiltMeshes {
 
     const rNoseWing = pts[49] ?? pts[102] ?? noseTip;
     const lNoseWing = pts[279] ?? pts[331] ?? noseTip;
-    const rNoseBridgeSide = pts[48] ?? pts[198] ?? rNoseWing;
-    const lNoseBridgeSide = pts[278] ?? pts[420] ?? lNoseWing;
     const dWing = Math.min(
       dist2(nx, ny, rNoseWing[0], rNoseWing[1]),
       dist2(nx, ny, lNoseWing[0], lNoseWing[1]),
-      dist2(nx, ny, rNoseBridgeSide[0], rNoseBridgeSide[1]),
-      dist2(nx, ny, lNoseBridgeSide[0], lNoseBridgeSide[1]),
     );
-    const noseW = (1 - smoothstep(0.0, face.faceW * 0.17, dWing)) * localScale;
+    const noseW = (1 - smoothstep(0.0, face.faceW * 0.1, dWing)) * localScale;
 
     // Uniform eyebrow strip plateau: tarsal eyelid crease (ny >= lidCreaseY) stays 0.0, entire brow & immediate sub-brow skin stays flat 1.0 (zero hair stretching)
     const upperLidProtectSet = new Set([
@@ -2308,13 +2441,15 @@ function buildAvatarMeshes(face: FacePts): BuiltMeshes {
     }
 
     const borderMask =
-      smoothstep(0.0, 0.06, nx) *
-      smoothstep(1.0, 0.94, nx) *
-      smoothstep(0.0, 0.06, ny) *
-      smoothstep(1.0, 0.94, ny);
+      smoothstep(0.0, 0.015, nx) *
+      smoothstep(1.0, 0.985, nx) *
+      smoothstep(0.0, 0.015, ny) *
+      smoothstep(1.0, 0.985, ny);
     const headW =
       (ny <= chin[1] ? Math.max(0.96, computeHeadWeight(nx, ny)) : computeHeadWeight(nx, ny)) *
       borderMask;
+
+    const neckW = computeNeckWeight(nx, ny) * borderMask;
 
     faceVerts[fPtr++] = nx;
     faceVerts[fPtr++] = ny;
@@ -2334,7 +2469,7 @@ function buildAvatarMeshes(face: FacePts): BuiltMeshes {
     faceVerts[fPtr++] = side;
     faceVerts[fPtr++] = 0;
     faceVerts[fPtr++] = 0;
-    faceVerts[fPtr++] = 0; // aHandRig.z carries shoulderRidgeW when uPass < 1.5; mouthVerts overrides with t
+    faceVerts[fPtr++] = neckW;
     faceVerts[fPtr++] = mouthX;
   }
 
@@ -2465,6 +2600,8 @@ export function AnimatedAvatar({
   name,
   active,
   listening = false,
+  thinking = false,
+  userSpeaking = false,
   emotion = "neutral",
   engine = "mediapipe-mesh",
   liveAvatarUrl = "http://localhost:7860",
@@ -2475,6 +2612,8 @@ export function AnimatedAvatar({
   showMesh = false,
   blurredBackground = false,
   animationStyle = "auto",
+  swallowSignal,
+  topicComplexity = 0,
   className = "",
 }: {
   src: string | null;
@@ -2482,6 +2621,8 @@ export function AnimatedAvatar({
   active: boolean;
   emotion?: AvatarEmotion | undefined;
   listening?: boolean | undefined;
+  thinking?: boolean | undefined;
+  userSpeaking?: boolean | undefined;
   gesture?: AvatarGesture | undefined;
   engine?: AvatarEngine | undefined;
   liveAvatarUrl?: string | undefined;
@@ -2492,6 +2633,8 @@ export function AnimatedAvatar({
   showMesh?: boolean;
   blurredBackground?: boolean | undefined;
   animationStyle?: "auto" | "human" | "anime";
+  swallowSignal?: { seq: number; strength?: number } | undefined;
+  topicComplexity?: number | undefined;
   className?: string | undefined;
 }) {
   const effectiveSrc = !src || src.includes("/__l5e/") ? DEFAULT_FALLBACK_PHOTO : src;
@@ -2505,6 +2648,10 @@ export function AnimatedAvatar({
 
   const listeningRef = useRef(listening);
   listeningRef.current = listening;
+  const thinkingRef = useRef(thinking);
+  thinkingRef.current = thinking;
+  const userSpeakingRef = useRef(userSpeaking);
+  userSpeakingRef.current = userSpeaking;
   const activeRef = useRef(active);
   activeRef.current = active;
   const emotionRef = useRef<AvatarEmotion>(emotion);
@@ -2523,6 +2670,10 @@ export function AnimatedAvatar({
   blurredBgRef.current = !!blurredBackground;
   const styleRef = useRef(animationStyle);
   styleRef.current = animationStyle;
+  const swallowSignalRef = useRef(swallowSignal);
+  swallowSignalRef.current = swallowSignal;
+  const topicComplexityRef = useRef(topicComplexity);
+  topicComplexityRef.current = topicComplexity;
 
   const resolvedStyleHint = "human" as const;
 
@@ -2751,6 +2902,7 @@ export function AnimatedAvatar({
       uOpen: loc("uOpen"),
       uWide: loc("uWide"),
       uRound: loc("uRound"),
+      uPucker: loc("uPucker"),
       uLipPress: loc("uLipPress"),
       uLabiodental: loc("uLabiodental"),
       uUpperLipLift: loc("uUpperLipLift"),
@@ -2759,6 +2911,7 @@ export function AnimatedAvatar({
       uSmile: loc("uSmile"),
       uSmileR: loc("uSmileR"),
       uSmileL: loc("uSmileL"),
+      uSmileTeeth: loc("uSmileTeeth"),
       uMouthSkewX: loc("uMouthSkewX"),
       uCheekLift: loc("uCheekLift"),
       uInnerBrowY: loc("uInnerBrowY"),
@@ -2792,6 +2945,7 @@ export function AnimatedAvatar({
       uHand1Delta: loc("uHand1Delta"),
       uHairDelta: loc("uHairDelta"),
       uSwallow: loc("uSwallow"),
+      uSwallowPhase: loc("uSwallowPhase"),
       uAdamAppleCoord: loc("uAdamAppleCoord"),
       uCheekCenters: loc("uCheekCenters"),
       uTearDucts: loc("uTearDucts"),
@@ -2829,6 +2983,7 @@ export function AnimatedAvatar({
       uRScleraPos: loc("uRScleraPos"),
       uLScleraNeg: loc("uLScleraNeg"),
       uLScleraPos: loc("uLScleraPos"),
+      uEyeBrowFloor: loc("uEyeBrowFloor"),
     };
 
     let viewW = 640;
@@ -2880,6 +3035,8 @@ export function AnimatedAvatar({
       const frame = stepExpressionEngine(exprState, now, {
         active: isActive,
         listening: listeningRef.current,
+        thinking: thinkingRef.current,
+        userSpeaking: userSpeakingRef.current,
         emotion: emotionRef.current,
         visemes,
         hasVisibleTeeth: face.hasVisibleTeeth,
@@ -2888,6 +3045,8 @@ export function AnimatedAvatar({
         mirrorMode: mirrorModeRef.current,
         reducedMotion,
         animeStyle: false,
+        swallowSignal: swallowSignalRef.current,
+        topicComplexity: topicComplexityRef.current,
       });
 
       gl.viewport(0, 0, viewW, viewH);
@@ -2973,6 +3132,7 @@ export function AnimatedAvatar({
       gl.uniform1f(uLoc.uOpen, frame.open);
       gl.uniform1f(uLoc.uWide, frame.wide);
       gl.uniform1f(uLoc.uRound, frame.round);
+      gl.uniform1f(uLoc.uPucker, frame.pucker);
       gl.uniform1f(uLoc.uLipPress, frame.lipPress);
       gl.uniform1f(uLoc.uLabiodental, frame.labiodental);
       gl.uniform1f(uLoc.uUpperLipLift, frame.upperLipLift);
@@ -2981,6 +3141,7 @@ export function AnimatedAvatar({
       gl.uniform1f(uLoc.uSmile, frame.smile);
       gl.uniform1f(uLoc.uSmileR, frame.smileR);
       gl.uniform1f(uLoc.uSmileL, frame.smileL);
+      gl.uniform1f(uLoc.uSmileTeeth, frame.smileTeeth);
       gl.uniform1f(uLoc.uMouthSkewX, frame.mouthSkewX);
       gl.uniform1f(uLoc.uCheekLift, frame.cheekLift);
       gl.uniform1f(uLoc.uInnerBrowY, frame.innerBrowY);
@@ -3015,6 +3176,7 @@ export function AnimatedAvatar({
       gl.uniform2f(uLoc.uHand1Delta, -frame.handShiftX, frame.handShiftY);
       gl.uniform2f(uLoc.uHairDelta, frame.hairShiftX, frame.hairShiftY);
       gl.uniform1f(uLoc.uSwallow, frame.swallowAmount);
+      gl.uniform1f(uLoc.uSwallowPhase, frame.swallowPhase);
       const toFaceCoord = (pt: [number, number]): [number, number] => {
         const dx = (pt[0] - face.center[0]) * imgAspect;
         const dy = pt[1] - face.center[1];
@@ -3178,6 +3340,11 @@ export function AnimatedAvatar({
         face.colors.scleraLeftPos[0] / 255,
         face.colors.scleraLeftPos[1] / 255,
         face.colors.scleraLeftPos[2] / 255,
+      );
+      gl.uniform2f(
+        uLoc.uEyeBrowFloor,
+        face.rightEyeCurve.browFloorEy ?? -0.78,
+        face.leftEyeCurve.browFloorEy ?? -0.78,
       );
 
       // Pass -1: Inpainted background (clean or bokeh-blurred)

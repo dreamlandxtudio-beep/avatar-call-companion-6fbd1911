@@ -1,7 +1,7 @@
 // Voices: Gemini Cloud TTS (Spanish & English, WAV + real AnalyserNode lip-sync), Kokoro-82M, and device voices.
 // STT: MediaRecorder + Web Audio VAD -> /api/transcribe (Gemini 3.5 Transcribe), with browser SpeechRecognition fallback.
 import type { VoiceChoice } from "./store";
-import { voiceProsody } from "./voice-prosody";
+import { dynamicSpeechTempo, type SpeechTempoProfile } from "./voice-prosody";
 import { textToVisemeProtos } from "./phonemes";
 
 export const GEMINI_VOICES = [
@@ -499,24 +499,32 @@ async function playAudioBuffer(
   c: AudioContext,
   signal: AbortSignal,
   spokenText?: string,
+  playbackRate = 1,
 ): Promise<boolean> {
   if (signal.aborted) return false;
   if (c.state === "suspended") {
     await Promise.race([c.resume().catch(() => {}), new Promise<void>((r) => setTimeout(r, 450))]);
   }
   if (c.state !== "running") return false;
+  const clampedRate = Math.max(0.92, Math.min(1.14, playbackRate));
   const src = c.createBufferSource();
   src.buffer = buf;
+  src.playbackRate.value = clampedRate;
   src.connect(analyser!);
   current = src;
+  const effectiveDuration = (buf.duration || 3) / clampedRate;
   if (spokenText) {
-    const speechWindow = detectAudioSpeechWindow(buf);
-    const tl = buildVisemeTimeline(spokenText, buf.duration || 3, 1, speechWindow);
+    const rawWindow = detectAudioSpeechWindow(buf);
+    const speechWindow = {
+      startSec: rawWindow.startSec / clampedRate,
+      endSec: rawWindow.endSec / clampedRate,
+    };
+    const tl = buildVisemeTimeline(spokenText, effectiveDuration, clampedRate, speechWindow);
     tl.useAudioClock = true;
     tl.startedAudioTime = c.currentTime;
     activeTimeline = tl;
   }
-  const maxMs = Math.min(25000, Math.max(1500, Math.round((buf.duration || 3) * 1000) + 1200));
+  const maxMs = Math.min(25000, Math.max(1500, Math.round(effectiveDuration * 1000) + 1200));
   await new Promise<void>((resolve) => {
     let settled = false;
     const done = () => {
@@ -587,8 +595,10 @@ async function speakViaGemini(
   lang: string,
   signal: AbortSignal,
   emotion?: string,
+  tempoProfile?: SpeechTempoProfile,
 ): Promise<boolean> {
-  const cacheKey = `${voiceId}|${lang}|${emotion ?? ""}|${clean}`;
+  const tempoTag = tempoProfile?.tempo ?? "normal";
+  const cacheKey = `${voiceId}|${lang}|${emotion ?? ""}|${tempoTag}|${clean}`;
   let arr = ttsCache.get(cacheKey);
   if (!arr) {
     const timeout = new AbortController();
@@ -605,6 +615,7 @@ async function speakViaGemini(
           text: clean,
           voiceName: voiceId || "Kore",
           language: lang,
+          tempo: tempoTag,
           ...(emotion ? { emotion } : {}),
         }),
       });
@@ -628,13 +639,24 @@ async function speakViaGemini(
   const c = unlockAudio();
   if (!c) return false;
 
+  // Subtle acoustic tempo micro-nudge preserves natural vocal pitch while making fast/slow cues unmistakably distinct
+  const playbackRate = tempoProfile
+    ? tempoProfile.tempo === "fast"
+      ? 1.07
+      : tempoProfile.tempo === "brisk"
+        ? 1.03
+        : tempoProfile.tempo === "slow"
+          ? 0.95
+          : 1
+    : 1;
+
   try {
     const decoded = await c.decodeAudioData(arr.slice(0));
-    return await playAudioBuffer(decoded, c, signal, clean);
+    return await playAudioBuffer(decoded, c, signal, clean, playbackRate);
   } catch {
     const fallbackBuf = decodePcm16Fallback(c, arr);
     if (!fallbackBuf) return false;
-    return await playAudioBuffer(fallbackBuf, c, signal, clean);
+    return await playAudioBuffer(fallbackBuf, c, signal, clean, playbackRate);
   }
 }
 
@@ -1044,10 +1066,12 @@ export async function speak(
   const ctrl = new AbortController();
   speakAbort = ctrl;
 
+  const tempo = dynamicSpeechTempo(clean, emotion);
+
   if (voice.engine === "gemini" && !opts?.localOnly) {
     try {
       const geminiVoiceId = voice.id || defaultGeminiVoiceForGender(opts?.gender);
-      const ok = await speakViaGemini(clean, geminiVoiceId, lang, ctrl.signal, emotion);
+      const ok = await speakViaGemini(clean, geminiVoiceId, lang, ctrl.signal, emotion, tempo);
       if (ok || ctrl.signal.aborted) return;
     } catch (e) {
       if (ctrl.signal.aborted) return;
@@ -1062,7 +1086,7 @@ export async function speak(
       const kokoroVoiceId = voice.id || (opts?.gender === "male" ? "am_michael" : "af_heart");
       const a = await kokoro.generate(clean, {
         voice: kokoroVoiceId,
-        speed: voiceProsody(emotion).rate,
+        speed: tempo.rate,
       });
       if (ctrl.signal.aborted) return;
       const c = unlockAudio();
@@ -1106,13 +1130,12 @@ export async function speak(
     };
     ctrl.signal.addEventListener("abort", onAbort, { once: true });
 
-    const prosody = voiceProsody(emotion);
     const estWords = Math.max(1, clean.split(/\s+/).length);
-    const estDuration = Math.max(0.8, (clean.length / 13.5 + estWords * 0.04) / prosody.rate);
+    const estDuration = Math.max(0.8, (clean.length / 13.5 + estWords * 0.04) / tempo.rate);
 
     const startCadence = () => {
       if (settled) return;
-      activeTimeline = buildVisemeTimeline(clean, estDuration, prosody.rate);
+      activeTimeline = buildVisemeTimeline(clean, estDuration, tempo.rate);
       const tick = () => {
         if (settled) return;
         const sampled = sampleVisemeTimeline(activeTimeline);
@@ -1137,8 +1160,8 @@ export async function speak(
 
     const u = new SpeechSynthesisUtterance(clean);
     u.lang = lang;
-    u.rate = prosody.rate;
-    u.pitch = prosody.pitch;
+    u.rate = tempo.rate;
+    u.pitch = tempo.pitch;
     const v =
       (voice.engine === "system" && voice.id
         ? speechSynthesis.getVoices().find((x) => x.voiceURI === voice.id)

@@ -35,6 +35,7 @@ export type EyeCurveProfile = {
   scaleY: number;
   outerReach: number;
   outerWingY: number;
+  browFloorEy?: number | undefined;
 };
 
 export type FacePts = {
@@ -86,6 +87,8 @@ export type FacePts = {
   leftCheekPos: [number, number];
   rightInnerCanthus: [number, number];
   leftInnerCanthus: [number, number];
+  hasTrapezius?: boolean | undefined;
+  neckInflectionY?: number | undefined;
   hands: HandKeypoints[];
   colors: FaceColors;
   segMask?: Float32Array | undefined;
@@ -271,6 +274,7 @@ function extractEyeCurveProfile(
       scaleY: maxAbs,
       outerReach: 1.26,
       outerWingY: 0,
+      browFloorEy: -0.78,
     },
   };
 }
@@ -572,21 +576,21 @@ function analyzePhotoFeatures(
           refinedPupil = [refinedPupil[0] + symShift / aspect, refinedPupil[1]];
           const symRad = (avgL + avgR) * 0.5;
           const allHits = [...leftHits, ...rightHits, ...downHits].sort((a, b) => a - b);
-          const upperHit =
-            allHits[Math.min(allHits.length - 1, Math.floor(allHits.length * 0.82))] ?? symRad;
+          const midHit =
+            allHits[Math.min(allHits.length - 1, Math.floor(allHits.length * 0.65))] ?? symRad;
           refinedIrisRad = Math.min(
-            eyeHalfW * 0.72,
-            irisRad * 1.45,
-            Math.max(irisRad * 0.96, Math.max(symRad, upperHit) * 1.09),
+            eyeHalfW * 0.62,
+            irisRad * 1.06,
+            Math.max(irisRad * 0.94, Math.max(symRad, midHit) * 1.02),
           );
         } else {
           const allHits = [...leftHits, ...rightHits, ...downHits].sort((a, b) => a - b);
           if (allHits.length >= 2) {
-            const hitR = allHits[Math.min(allHits.length - 1, Math.floor(allHits.length * 0.82))]!;
+            const hitR = allHits[Math.min(allHits.length - 1, Math.floor(allHits.length * 0.65))]!;
             refinedIrisRad = Math.min(
-              eyeHalfW * 0.72,
-              irisRad * 1.45,
-              Math.max(irisRad * 0.96, hitR * 1.1),
+              eyeHalfW * 0.62,
+              irisRad * 1.06,
+              Math.max(irisRad * 0.94, hitR * 1.02),
             );
           }
         }
@@ -697,86 +701,7 @@ function analyzePhotoFeatures(
         return { mid, neg: anchorSide(rawNeg), pos: anchorSide(rawPos) };
       };
 
-      // Iterative self-verification loop: simulate cornea removal & inspect remaining sclera for any dark crescent or abrupt color jump
-      let scleraEst = sampleScleraFromRadius(refinedPupil, refinedIrisRad);
-      const maxCorneaRad = Math.min(eyeHalfW * 0.76, irisRad * 1.65);
-      for (let iter = 0; iter < 9 && eyePixels.length >= 24; iter++) {
-        const bgLumaMid =
-          0.299 * scleraEst.mid[0] + 0.587 * scleraEst.mid[1] + 0.114 * scleraEst.mid[2];
-        const bgLumaNeg =
-          0.299 * scleraEst.neg[0] + 0.587 * scleraEst.neg[1] + 0.114 * scleraEst.neg[2];
-        const bgLumaPos =
-          0.299 * scleraEst.pos[0] + 0.587 * scleraEst.pos[1] + 0.114 * scleraEst.pos[2];
-
-        let remWeight = 0;
-        let remDx = 0;
-        let remDy = 0;
-        let maxRemR = refinedIrisRad;
-        let remCount = 0;
-
-        for (const p of eyePixels) {
-          // Inspect visible sclera band around & outside the erased cornea disk
-          if (p.fy < 0.34 || p.fy > 0.76) continue;
-          if (Math.abs(p.relX) > eyeHalfW * 0.76) continue;
-          const dPupil = Math.hypot((p.nx - refinedPupil[0]) * aspect, p.ny - refinedPupil[1]);
-          if (
-            dPupil <= refinedIrisRad * 1.02 ||
-            dPupil > Math.max(maxCorneaRad * 1.18, irisRad * 1.65)
-          ) {
-            continue;
-          }
-
-          // Ignore pink inner caruncle pixels near edge
-          const redness = p.r - (p.g + p.b) * 0.5;
-          if (redness > 18 && Math.abs(p.relX) > eyeHalfW * 0.52) continue;
-
-          const sideT = Math.max(
-            0,
-            Math.min(1, (p.relX / Math.max(0.005, eyeHalfW * 0.8)) * 0.5 + 0.5),
-          );
-          const expectedR = scleraEst.neg[0] * (1 - sideT) + scleraEst.pos[0] * sideT;
-          const expectedG = scleraEst.neg[1] * (1 - sideT) + scleraEst.pos[1] * sideT;
-          const expectedB = scleraEst.neg[2] * (1 - sideT) + scleraEst.pos[2] * sideT;
-          const expectedLuma =
-            p.relX < 0 ? (bgLumaNeg + bgLumaMid) * 0.5 : (bgLumaPos + bgLumaMid) * 0.5;
-
-          const lumaDrop = expectedLuma - p.luma;
-          const colJump = Math.hypot(p.r - expectedR, p.g - expectedG, p.b - expectedB);
-
-          // Dark iris/limbal crescent still sitting in vacated sclera -> refine until completely gone
-          if (lumaDrop > 21 || (colJump > 34 && lumaDrop > 10)) {
-            remCount++;
-            const w = lumaDrop + colJump * 0.5;
-            remWeight += w;
-            remDx += (p.nx - refinedPupil[0]) * aspect * w;
-            remDy += (p.ny - refinedPupil[1]) * w;
-            if (dPupil > maxRemR) maxRemR = dPupil;
-          }
-        }
-
-        if (remCount <= 1) {
-          break;
-        }
-
-        const avgDx = remDx / Math.max(1e-5, remWeight);
-        const avgDy = remDy / Math.max(1e-5, remWeight);
-        const candPx = refinedPupil[0] + (avgDx * 0.35) / aspect;
-        const candPy = refinedPupil[1] + avgDy * 0.35;
-        const totalShift = Math.hypot((candPx - pupil[0]) * aspect, candPy - pupil[1]);
-        const maxShiftAllowed = irisRad * 0.45;
-        if (totalShift <= maxShiftAllowed) {
-          refinedPupil = [candPx, candPy];
-        } else if (totalShift > 1e-6) {
-          const s = maxShiftAllowed / totalShift;
-          refinedPupil = [pupil[0] + (candPx - pupil[0]) * s, pupil[1] + (candPy - pupil[1]) * s];
-        }
-        refinedIrisRad = Math.min(
-          maxCorneaRad,
-          Math.max(refinedIrisRad * 1.05, Math.min(maxCorneaRad, maxRemR * 1.03)),
-        );
-        scleraEst = sampleScleraFromRadius(refinedPupil, refinedIrisRad);
-      }
-
+      const scleraEst = sampleScleraFromRadius(refinedPupil, refinedIrisRad);
       const { mid, neg, pos } = scleraEst;
       return { mid, neg, pos, refinedPupil, refinedIrisRad };
     };
@@ -855,6 +780,19 @@ function analyzePhotoFeatures(
         return sampleCrop(eyeCenter[0] + dx / aspect, eyeCenter[1] + dy);
       };
 
+      // Project lower eyebrow landmarks into eye-local ey so tarsal lid sampling strictly avoids eyebrow hairs
+      const browBotIndices = outerSign < 0 ? [46, 53, 52, 65, 55] : [276, 283, 282, 295, 285];
+      let lowestBrowEy = -1.65;
+      for (const bIdx of browBotIndices) {
+        const bp = pts[bIdx];
+        if (!bp) continue;
+        const bdx = (bp[0] - eyeCenter[0]) * aspect;
+        const bdy = bp[1] - eyeCenter[1];
+        const bEy = (bdx * axis.vx + bdy * axis.vy) / Math.max(0.004, scaleY);
+        if (bEy > lowestBrowEy) lowestBrowEy = bEy;
+      }
+      const browFloorEy = Math.max(-1.6, Math.min(-0.46, lowestBrowEy + 0.16));
+
       // Corner-to-corner 8-column color-edge refinement for upper lash margin & lower lid rim
       const cols = [-0.82, -0.58, -0.34, -0.11, 0.11, 0.34, 0.58, 0.82];
       const detectedUp = [...curve.upperArch];
@@ -904,11 +842,18 @@ function analyzePhotoFeatures(
         }
         detectedLo[ci] = Math.max(0.08, Math.min(hintLo + 0.28, Math.max(hintLo - 0.24, bestLo)));
 
-        // 3) Sample clean tarsal upper lid skin strictly ABOVE lash root (excluding black mascara/lashes)
-        if (Math.abs(ex) <= 0.68) {
-          for (let dy = 0.42; dy <= 1.05; dy += 0.18) {
-            const sp = sampleEyCoord(ex, detectedUp[ci]! - dy);
-            if (sp.luma >= Math.max(62, skinRefLuma * 0.68)) {
+        // 3) Sample pure tarsal upper-lid skin strictly above lash root AND strictly below eyebrow hairs
+        if (Math.abs(ex) <= 0.64) {
+          const tarsalNearY = detectedUp[ci]! - 0.18;
+          const tarsalCeilY = Math.max(detectedUp[ci]! - 0.58, browFloorEy + 0.06);
+          const spanStart = Math.min(tarsalNearY, tarsalCeilY);
+          const spanEnd = Math.max(tarsalNearY, tarsalCeilY + 0.04);
+          for (let frac = 0.2; frac <= 0.85; frac += 0.22) {
+            const sampleY = spanStart + (spanEnd - spanStart) * frac;
+            const sp = sampleEyCoord(ex, sampleY);
+            const chromaDist =
+              Math.abs(sp.r - skin[0]) + Math.abs(sp.g - skin[1]) + Math.abs(sp.b - skin[2]);
+            if (sp.luma >= Math.max(66, skinRefLuma * 0.72) && chromaDist < 125) {
               upperSkinCands.push({ luma: sp.luma, rgb: [sp.r, sp.g, sp.b] });
             }
           }
@@ -1003,6 +948,7 @@ function analyzePhotoFeatures(
           lowerArch,
           outerReach,
           outerWingY,
+          browFloorEy,
         },
         upperLidRgb: medianRgb(upperSkinCands),
         lowerLidRgb: medianRgb(lowerSkinCands),
@@ -1653,12 +1599,15 @@ function buildFacePts(
   const adamApple = detectAdamApple();
 
   // 5-point anatomical structure: lowerNeck + rightTrapezius + leftTrapezius + rightShoulder + leftShoulder
+  // Finds vertical-to-diagonal inflection point so vertical neck lines stay undeformed and trapezius is disabled when out-of-frame or occluded.
   const detect5PointNeckShoulderYoke = (): {
     lowerNeck: [number, number];
     rightTrapezius: [number, number];
     leftTrapezius: [number, number];
     rightShoulder: [number, number];
     leftShoulder: [number, number];
+    hasTrapezius: boolean;
+    neckInflectionY: number;
   } => {
     const defLowerY = Math.min(0.95, Math.max(neckBase[1], chinPt[1] + faceH * 0.34));
     const defLowerNeck: [number, number] = [neckBase[0], defLowerY];
@@ -1682,6 +1631,19 @@ function buildFacePts(
     const segMask = extras?.segMask;
     const sw = extras?.segWidth;
     const sh = extras?.segHeight;
+    const roomBelowChin = 0.98 - chinPt[1];
+    if (roomBelowChin < faceH * 0.22) {
+      return {
+        lowerNeck: defLowerNeck,
+        rightTrapezius: defRightTrap,
+        leftTrapezius: defLeftTrap,
+        rightShoulder: defRightShoulder,
+        leftShoulder: defLeftShoulder,
+        hasTrapezius: false,
+        neckInflectionY: defLowerY,
+      };
+    }
+
     if (!segMask || !sw || !sh) {
       return {
         lowerNeck: defLowerNeck,
@@ -1689,6 +1651,8 @@ function buildFacePts(
         leftTrapezius: defLeftTrap,
         rightShoulder: defRightShoulder,
         leftShoulder: defLeftShoulder,
+        hasTrapezius: roomBelowChin >= faceH * 0.34,
+        neckInflectionY: defLowerY,
       };
     }
 
@@ -1707,53 +1671,146 @@ function buildFacePts(
       };
     };
 
-    // Locate inferior neck base just before silhouette width flares into the trapezius slope
-    let bestNeckY = defLowerY;
-    let minNeckWidth = 999;
-    const scanStart = Math.min(0.92, chinPt[1] + faceH * 0.14);
-    const scanEnd = Math.min(0.95, chinPt[1] + faceH * 0.42);
-    for (let ny = scanStart; ny <= scanEnd; ny += 0.015) {
+    const rows: Array<{ ny: number; leftX: number; rightX: number; width: number }> = [];
+    const scanStart = Math.min(0.94, chinPt[1] + faceH * 0.06);
+    const scanEnd = 0.975;
+    for (let ny = scanStart; ny <= scanEnd; ny += 0.012) {
       const sp = rowSpan(ny);
-      if (sp && sp.width < minNeckWidth) {
-        minNeckWidth = sp.width;
-        bestNeckY = ny;
+      if (sp) rows.push({ ny, ...sp });
+    }
+    if (rows.length < 4) {
+      return {
+        lowerNeck: defLowerNeck,
+        rightTrapezius: defRightTrap,
+        leftTrapezius: defLeftTrap,
+        rightShoulder: defRightShoulder,
+        leftShoulder: defLeftShoulder,
+        hasTrapezius: false,
+        neckInflectionY: Math.min(0.94, chinPt[1] + faceH * 0.24),
+      };
+    }
+
+    // 1) Find narrowest vertical neck waist in upper cervical zone
+    let minIdx = 0;
+    let minNeckWidth = rows[0]!.width;
+    const upperBoundY = Math.min(0.94, chinPt[1] + faceH * 0.32);
+    for (let i = 0; i < rows.length; i++) {
+      const r = rows[i]!;
+      if (r.ny > upperBoundY) break;
+      if (r.width < minNeckWidth) {
+        minNeckWidth = r.width;
+        minIdx = i;
       }
     }
-    const baseSpan = rowSpan(bestNeckY);
-    const lowerNeckX = baseSpan ? (baseSpan.leftX + baseSpan.rightX) * 0.5 : defLowerNeck[0];
-    const lowerNeckY = Math.min(0.95, bestNeckY + faceH * 0.06);
-    const lowerNeck: [number, number] = [lowerNeckX, lowerNeckY];
 
-    // Trapezius outer edges sit between lowerNeck and shoulders along the upper silhouette flare
-    const trapY = Math.min(0.96, lowerNeckY + faceH * 0.11);
-    const trapSpan = rowSpan(trapY);
+    // 2) Scan downward from neck waist for inflection where vertical neck line begins flaring into trapezius
+    let maxLowerW = minNeckWidth;
+    for (let i = minIdx; i < rows.length; i++) {
+      if (rows[i]!.width > maxLowerW) maxLowerW = rows[i]!.width;
+    }
+
+    const neckTooWideOrHidden = minNeckWidth > faceW * 1.18 && maxLowerW < minNeckWidth * 1.24;
+    const noFlare = maxLowerW < minNeckWidth * 1.22;
+    let inflectionIdx = -1;
+    if (!neckTooWideOrHidden && !noFlare) {
+      for (let i = Math.max(1, minIdx); i < rows.length - 1; i++) {
+        const prev = rows[i - 1]!;
+        const curr = rows[i]!;
+        const next = rows[i + 1]!;
+        const dy = Math.max(0.004, next.ny - prev.ny);
+        const slope = (next.width - prev.width) / dy;
+        const leftFlare = prev.leftX - next.leftX > (faceW * 0.007) / aspect;
+        const rightFlare = next.rightX - prev.rightX > (faceW * 0.007) / aspect;
+        if (
+          curr.width >= minNeckWidth * 1.03 &&
+          slope > faceW * 0.24 &&
+          (leftFlare || rightFlare)
+        ) {
+          inflectionIdx = i;
+          break;
+        }
+      }
+    }
+
+    const hasTrapezius = inflectionIdx >= 0 && rows.length - inflectionIdx >= 3;
+    if (!hasTrapezius) {
+      return {
+        lowerNeck: defLowerNeck,
+        rightTrapezius: defRightTrap,
+        leftTrapezius: defLeftTrap,
+        rightShoulder: defRightShoulder,
+        leftShoulder: defLeftShoulder,
+        hasTrapezius: false,
+        neckInflectionY: Math.min(
+          0.94,
+          Math.max(rows[minIdx]!.ny, chinPt[1] + faceH * 0.22),
+          chinPt[1] + faceH * 0.28,
+        ),
+      };
+    }
+
+    const vertEndRow = rows[Math.max(minIdx, inflectionIdx - 1)]!;
+    const neckInflectionY = vertEndRow.ny;
+    const lowerNeckX = (vertEndRow.leftX + vertEndRow.rightX) * 0.5;
+    const lowerNeck: [number, number] = [lowerNeckX, Math.min(0.95, neckInflectionY)];
+
+    // Find shoulder acromion row where outward flare reaches outer width before bottom edge
+    let shIdx = rows.length - 1;
+    const targetShoulderW = minNeckWidth + (maxLowerW - minNeckWidth) * 0.88;
+    for (let i = inflectionIdx + 1; i < rows.length; i++) {
+      if (rows[i]!.width >= targetShoulderW || rows[i]!.ny >= neckInflectionY + faceH * 0.24) {
+        shIdx = i;
+        break;
+      }
+    }
+    const shRow = rows[shIdx]!;
+    const trapIdx = Math.min(
+      shIdx,
+      Math.max(inflectionIdx + 1, Math.round((inflectionIdx + shIdx) * 0.45)),
+    );
+    const trapRow = rows[trapIdx]!;
+
+    const neckColHalfX = Math.max((minNeckWidth * 0.5) / aspect, (faceW * 0.28) / aspect);
     const rightTrapezius: [number, number] =
-      trapSpan && trapSpan.leftX < lowerNeckX - (faceW * 0.28) / aspect
-        ? [trapSpan.leftX, trapY]
-        : defRightTrap;
+      trapRow.leftX < lowerNeckX - neckColHalfX * 1.04
+        ? [trapRow.leftX, trapRow.ny]
+        : [Math.min(lowerNeckX - neckColHalfX * 1.05, defRightTrap[0]), trapRow.ny];
     const leftTrapezius: [number, number] =
-      trapSpan && trapSpan.rightX > lowerNeckX + (faceW * 0.28) / aspect
-        ? [trapSpan.rightX, trapY]
-        : defLeftTrap;
+      trapRow.rightX > lowerNeckX + neckColHalfX * 1.04
+        ? [trapRow.rightX, trapRow.ny]
+        : [Math.max(lowerNeckX + neckColHalfX * 1.05, defLeftTrap[0]), trapRow.ny];
 
-    const shY = Math.min(0.98, lowerNeckY + faceH * 0.25);
-    const shSpan = rowSpan(shY);
     const rightShoulder: [number, number] =
       extras?.kp?.rightShoulder ??
-      (shSpan && shSpan.leftX < rightTrapezius[0] - (faceW * 0.08) / aspect
-        ? [shSpan.leftX, shY]
-        : defRightShoulder);
+      (shRow.leftX < rightTrapezius[0] - (faceW * 0.06) / aspect
+        ? [shRow.leftX, shRow.ny]
+        : [Math.min(rightTrapezius[0] - (faceW * 0.16) / aspect, defRightShoulder[0]), shRow.ny]);
     const leftShoulder: [number, number] =
       extras?.kp?.leftShoulder ??
-      (shSpan && shSpan.rightX > leftTrapezius[0] + (faceW * 0.08) / aspect
-        ? [shSpan.rightX, shY]
-        : defLeftShoulder);
+      (shRow.rightX > leftTrapezius[0] + (faceW * 0.06) / aspect
+        ? [shRow.rightX, shRow.ny]
+        : [Math.max(leftTrapezius[0] + (faceW * 0.16) / aspect, defLeftShoulder[0]), shRow.ny]);
 
-    return { lowerNeck, rightTrapezius, leftTrapezius, rightShoulder, leftShoulder };
+    return {
+      lowerNeck,
+      rightTrapezius,
+      leftTrapezius,
+      rightShoulder,
+      leftShoulder,
+      hasTrapezius: true,
+      neckInflectionY,
+    };
   };
 
-  const { lowerNeck, rightTrapezius, leftTrapezius, rightShoulder, leftShoulder } =
-    detect5PointNeckShoulderYoke();
+  const {
+    lowerNeck,
+    rightTrapezius,
+    leftTrapezius,
+    rightShoulder,
+    leftShoulder,
+    hasTrapezius,
+    neckInflectionY,
+  } = detect5PointNeckShoulderYoke();
 
   const hands: HandKeypoints[] = extras?.hands ?? extras?.kp?.hands ?? [];
   const analysis = analyzePhotoFeatures(
@@ -1849,6 +1906,8 @@ function buildFacePts(
     leftCheekPos,
     rightInnerCanthus,
     leftInnerCanthus,
+    hasTrapezius,
+    neckInflectionY,
     hands,
     colors: analysis.colors,
     segMask: extras?.segMask,

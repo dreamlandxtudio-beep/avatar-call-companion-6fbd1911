@@ -18,6 +18,7 @@ export type UserFaceObservation = {
   mouthShrug?: number;
   mouthFrown?: number;
   mouthRound?: number;
+  mouthPucker?: number;
   mouthWide?: number;
   mouthPress?: number;
   browInnerUp?: number;
@@ -33,11 +34,13 @@ export type UserFaceObservation = {
   headRoll?: number;
   headYaw: number; // -1 (looking left on screen) to +1 (looking right on screen)
   headPitch: number; // -1 (looking down) to +1 (looking up)
+  faceProximity?: number; // -0.48 (farther) to +1.0 (closer to camera)
   gazeX: number; // -1 (eyes looking left) to +1 (eyes looking right)
   gazeY: number; // -1 (eyes looking down) to +1 (eyes looking up)
   labelEs: string;
   contextPrompt: string;
   updatedAt: number;
+  meshPoints?: Array<[number, number]>;
 };
 
 export type CameraStartResult =
@@ -111,6 +114,7 @@ let videoLandmarker: any = null;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let videoLandmarkerPromise: Promise<any> | null = null;
 let lastVideoTimestampMs = -1;
+let baselineFaceScale: number | null = null;
 
 export async function ensureUserFaceTracker(): Promise<boolean> {
   if (videoLandmarker) return true;
@@ -153,6 +157,7 @@ function clamp(v: number, lo: number, hi: number): number {
 export function analyzeUserVideoFrame(
   video: HTMLVideoElement,
   timestampMs: number,
+  options?: { includeMesh?: boolean },
 ): UserFaceObservation | null {
   if (!videoLandmarker || video.readyState < 2 || video.videoWidth < 8 || video.videoHeight < 8) {
     return null;
@@ -192,7 +197,9 @@ export function analyzeUserVideoFrame(
     const bs = (name: string) => bsMap.get(name) ?? 0;
 
     const rawSmile = clamp((bs("mouthSmileLeft") + bs("mouthSmileRight")) * 0.5, 0, 1);
-    const smile = clamp(rawSmile * 1.24, 0, 1);
+    const cheekSquint = clamp((bs("cheekSquintLeft") + bs("cheekSquintRight")) * 0.5, 0, 1);
+    const mouthDimple = clamp((bs("mouthDimpleLeft") + bs("mouthDimpleRight")) * 0.5, 0, 1);
+    const smile = clamp(rawSmile * 1.24 + mouthDimple * 0.14 + cheekSquint * 0.08, 0, 1);
     const browFurrow = clamp((bs("browDownLeft") + bs("browDownRight")) * 0.5, 0, 1);
     const browRaiseLeft = clamp(
       Math.max(bs("browOuterUpLeft") * 1.15, bs("browInnerUp") * 0.72) - bs("browDownLeft") * 0.45,
@@ -219,12 +226,12 @@ export function analyzeUserVideoFrame(
     // Proportional mouth-open curve: immediate subtle sensitivity with full wide-open peak reach
     const lipSpanX = Math.max(0.02, Math.hypot(pts[291]!.x - pts[61]!.x, pts[291]!.y - pts[61]!.y));
     const lipGapY = Math.max(0, pts[14]!.y - pts[13]!.y);
-    const geomOpen = clamp((lipGapY / lipSpanX - 0.006) * 1.85, 0, 1);
-    const rawOpen = Math.max(bs("jawOpen") * 1.04, geomOpen * 0.92);
-    const mouthOpen = rawOpen < 0.004 ? 0 : clamp(Math.pow(rawOpen, 0.86) * 0.95, 0, 1);
-    const eyeWide = clamp((bs("eyeWideLeft") + bs("eyeWideRight")) * 0.5, 0, 1);
+    const geomOpen = clamp((lipGapY / lipSpanX - 0.006) * 1.92, 0, 1);
+    const rawOpen = Math.max(bs("jawOpen") * 1.14, geomOpen * 1.02);
+    const mouthOpen = rawOpen < 0.004 ? 0 : clamp(Math.pow(rawOpen, 0.88) * 1.04, 0, 1);
+    const eyeWide = clamp((bs("eyeWideLeft") + bs("eyeWideRight")) * 0.68, 0, 1);
 
-    // Compute head yaw & pitch from facial symmetry in mirrored selfie coordinate space
+    // Compute head yaw, pitch & camera proximity from facial landmarks in mirrored selfie space
     const nose = pts[1]!;
     const rCheek = pts[234]!;
     const lCheek = pts[454]!;
@@ -232,6 +239,18 @@ export function analyzeUserVideoFrame(
     const chin = pts[152]!;
     const rEye = pts[33]!;
     const lEye = pts[263]!;
+
+    const eyeSpan = Math.hypot(lEye.x - rEye.x, lEye.y - rEye.y);
+    const vertFaceSpan = Math.hypot(chin.x - forehead.x, chin.y - forehead.y);
+    const apparentScale = eyeSpan * 1.45 + vertFaceSpan * 0.55;
+    if (baselineFaceScale === null) {
+      baselineFaceScale = clamp(apparentScale, 0.3, 0.52);
+    } else {
+      baselineFaceScale = baselineFaceScale * 0.997 + clamp(apparentScale, 0.3, 0.48) * 0.003;
+    }
+    const rawProx = clamp((apparentScale - 0.39) / 0.22, -0.48, 1);
+    const relProx = clamp((apparentScale / Math.max(0.24, baselineFaceScale) - 1) * 1.85, -0.48, 1);
+    const faceProximity = clamp(rawProx * 0.45 + relProx * 0.55, -0.48, 1);
 
     const dR = Math.max(0.01, Math.abs(nose.x - rCheek.x));
     const dL = Math.max(0.01, Math.abs(lCheek.x - nose.x));
@@ -304,9 +323,10 @@ export function analyzeUserVideoFrame(
       -1,
       1,
     );
+    const mouthPucker = clamp(bs("mouthPucker") * 1.24, 0, 1);
     const mouthRound = clamp(Math.max(bs("mouthPucker"), bs("mouthFunnel") * 1.18), 0, 1);
     const mouthWide = clamp(
-      (bs("mouthStretchLeft") + bs("mouthStretchRight")) * 0.68 + smile * 0.38,
+      (bs("mouthStretchLeft") + bs("mouthStretchRight")) * 0.68 + smile * 0.38 + mouthDimple * 0.16,
       0,
       1,
     );
@@ -315,6 +335,9 @@ export function analyzeUserVideoFrame(
       0,
       1,
     );
+    const meshPoints = options?.includeMesh
+      ? pts.slice(0, 468).map((pt): [number, number] => [pt.x, pt.y])
+      : undefined;
 
     return {
       detected: true,
@@ -324,6 +347,7 @@ export function analyzeUserVideoFrame(
       smileRight,
       mouthSkewX,
       mouthRound,
+      mouthPucker,
       mouthWide,
       mouthPress,
       upperLipLift,
@@ -341,17 +365,23 @@ export function analyzeUserVideoFrame(
       blinkLeft,
       blinkRight,
       eyeWide,
-      eyeSquint: (bs("eyeSquintLeft") + bs("eyeSquintRight")) * 0.5,
+      eyeSquint: clamp(
+        (bs("eyeSquintLeft") + bs("eyeSquintRight")) * 0.5 + cheekSquint * 0.25,
+        0,
+        1,
+      ),
       noseSneer: clamp((bs("noseSneerLeft") + bs("noseSneerRight")) * 0.68, 0, 1),
       // Mirror-matched roll sign for -scale-x-100 selfie preview (rEye is on screen-right, lEye on screen-left)
       headRoll: clamp(Math.atan2(rEye.y - lEye.y, lEye.x - rEye.x), -0.45, 0.45),
       headYaw,
       headPitch,
+      faceProximity,
       gazeX,
       gazeY,
       labelEs,
       contextPrompt,
       updatedAt: timestampMs,
+      ...(meshPoints ? { meshPoints } : {}),
     };
   } catch {
     return null;

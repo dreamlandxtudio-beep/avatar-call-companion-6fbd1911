@@ -1,10 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
 import { expressionFromSignals } from "@/lib/face-signals";
 import { createExpressionEngine, stepExpressionEngine } from "@/lib/expressionEngine";
-import { voiceProsody } from "@/lib/voice-prosody";
+import { dynamicSpeechTempo, voiceProsody } from "@/lib/voice-prosody";
 import { deriveSpeechEmotionTimeline, extractEmotion } from "@/lib/ai";
 import { defaultVoiceForGender } from "@/lib/store";
 import { textToVisemeProtos } from "@/lib/phonemes";
+import { mouthMotion } from "@/lib/avatar-motion";
 import {
   buildVisemeTimeline,
   defaultGeminiVoiceForGender,
@@ -400,31 +401,68 @@ describe("Observable expression mirroring", () => {
     expect(isoFrame.headYaw).toBeGreaterThan(0.11);
     expect(isoFrame.neckYaw).toBeLessThan(isoFrame.headYaw * 0.35);
 
-    // 2) Occasional post-speech swallow triggers ~1s after active speech ends when random roll < 0.42
+    // 2) Automatic swallow waits 2-3 speech turns (never every single turn) and is stronger on complex topics
     vi.spyOn(Math, "random").mockReturnValue(0.2);
     const swState = createExpressionEngine(0);
+    swState.swallowTargetTurns = 2;
+    // Turn 1: should NOT trigger swallow yet
     stepExpressionEngine(swState, 10000, {
       ...options,
       mirrorMode: false,
       active: true,
       visemes: { level: 0.5, open: 0.4, wide: 0.1, round: 0.1 },
     });
-    // Transition active: true -> false schedules swallow ~850-2100ms later (with random=0.2 -> 850 + 250 = 1100ms after 10100ms)
-    stepExpressionEngine(swState, 10100, {
+    stepExpressionEngine(swState, 10100, { ...options, mirrorMode: false, active: false });
+    let turn1Max = 0;
+    for (let t = 10160; t <= 12200; t += 60) {
+      turn1Max = Math.max(
+        turn1Max,
+        stepExpressionEngine(swState, t, { ...options, mirrorMode: false, active: false })
+          .swallowAmount,
+      );
+    }
+    expect(turn1Max).toBeLessThan(0.05);
+
+    // Turn 2: triggers natural swallow (~520-1500ms after response completes)
+    stepExpressionEngine(swState, 12300, {
+      ...options,
+      mirrorMode: false,
+      active: true,
+      visemes: { level: 0.5, open: 0.4, wide: 0.1, round: 0.1 },
+    });
+    stepExpressionEngine(swState, 12400, {
       ...options,
       mirrorMode: false,
       active: false,
+      topicComplexity: 0.85,
     });
     let maxSwallow = 0;
-    for (let t = 10160; t <= 12200; t += 60) {
+    let maxSwallowPhase = 0;
+    for (let t = 12460; t <= 14600; t += 60) {
       const f = stepExpressionEngine(swState, t, {
         ...options,
         mirrorMode: false,
         active: false,
+        topicComplexity: 0.85,
       });
       maxSwallow = Math.max(maxSwallow, f.swallowAmount);
+      maxSwallowPhase = Math.max(maxSwallowPhase, f.swallowPhase);
     }
-    expect(maxSwallow).toBeGreaterThan(0.4);
+    expect(maxSwallow).toBeGreaterThan(0.95);
+    expect(maxSwallowPhase).toBeGreaterThan(0.5);
+
+    // Manual swallowSignal in Mirror mode executes immediately
+    const mirrorSwState = createExpressionEngine(0);
+    let manualMax = 0;
+    for (let t = 50; t <= 900; t += 60) {
+      const f = stepExpressionEngine(mirrorSwState, t, {
+        ...options,
+        mirrorMode: true,
+        swallowSignal: { seq: 1, strength: 1.4 },
+      });
+      manualMax = Math.max(manualMax, f.swallowAmount);
+    }
+    expect(manualMax).toBeGreaterThan(1.0);
     vi.restoreAllMocks();
 
     // 3) Mirror tongueOut drives tongue articulation and modest lip parting without full jaw drop
@@ -525,11 +563,253 @@ describe("Observable expression mirroring", () => {
         ...options,
         mirrorMode: false,
         active: true,
+        topicComplexity: 0.75,
         visemes: { level: 0.04, open: 0.02, wide: 0, round: 0 },
       });
       maxPauseSwallow = Math.max(maxPauseSwallow, f.swallowAmount);
     }
-    expect(maxPauseSwallow).toBeGreaterThan(0.4);
+    expect(maxPauseSwallow).toBeGreaterThan(0.6);
     vi.restoreAllMocks();
+  });
+
+  it("mirrors camera proximity into forwardLean and achieves selective wide mouth opening cleanly", () => {
+    const proxState = createExpressionEngine(0);
+    let closeFrame = stepExpressionEngine(proxState, 50, {
+      ...options,
+      userFace: {
+        ...face,
+        faceProximity: 0.85,
+        mouthOpen: 1.0,
+        headPitch: 0,
+        headYaw: 0,
+        gazeX: 0,
+        updatedAt: 50,
+      },
+    });
+    for (let t = 100; t <= 1000; t += 50) {
+      closeFrame = stepExpressionEngine(proxState, t, {
+        ...options,
+        userFace: {
+          ...face,
+          faceProximity: 0.85,
+          mouthOpen: 1.0,
+          headPitch: 0,
+          headYaw: 0,
+          gazeX: 0,
+          updatedAt: t,
+        },
+      });
+    }
+    expect(closeFrame.forwardLean).toBeGreaterThan(0.5);
+    expect(closeFrame.open).toBeGreaterThan(0.92);
+
+    const laughState = createExpressionEngine(0);
+    let maxLaughOpen = 0;
+    for (let t = 50; t <= 1200; t += 50) {
+      const lf = stepExpressionEngine(laughState, t, {
+        ...options,
+        mirrorMode: false,
+        emotion: "laugh",
+      });
+      maxLaughOpen = Math.max(maxLaughOpen, lf.open);
+    }
+    expect(maxLaughOpen).toBeGreaterThan(0.5);
+
+    // mouthMotion preserves restrained natural mid speech while reaching full 1.0 on peaks
+    const modViseme = mouthMotion(0.5, false, 0.02);
+    const peakViseme = mouthMotion(1.0, false, 0.02);
+    expect(modViseme.opening).toBeLessThan(0.5);
+    expect(peakViseme.opening).toBeCloseTo(1.0, 2);
+  });
+
+  it("compensates eye gaze opposite to head turn for screen-locked eye contact and drives thinking vs userSpeaking gaze", () => {
+    vi.spyOn(Math, "random").mockReturnValue(0.5);
+    // 1) Mirror mode: turning head right while looking near screen center counter-steers pupils left (screen-locked eye contact)
+    const vorState = createExpressionEngine(0);
+    let vorFrame = stepExpressionEngine(vorState, 50, {
+      ...options,
+      userFace: {
+        ...face,
+        headYaw: 0.48,
+        headPitch: 0,
+        gazeX: 0,
+        gazeY: 0,
+        mouthOpen: 0,
+        updatedAt: 50,
+      },
+    });
+    for (let t = 100; t <= 900; t += 50) {
+      vorFrame = stepExpressionEngine(vorState, t, {
+        ...options,
+        userFace: {
+          ...face,
+          headYaw: 0.48,
+          headPitch: 0,
+          gazeX: 0,
+          gazeY: 0,
+          mouthOpen: 0,
+          updatedAt: t,
+        },
+      });
+    }
+    expect(vorFrame.headYaw).toBeGreaterThan(0.3);
+    expect(vorFrame.gazeX).toBeLessThan(-0.14);
+
+    // 2) Conversational states: userSpeaking locks gaze straight on user; thinking glances aside briefly
+    const convState = createExpressionEngine(0);
+    convState.targetGazeX = 0.5;
+    convState.gazeX = 0.5;
+    let listenUserFrame = stepExpressionEngine(convState, 50, {
+      ...options,
+      mirrorMode: false,
+      listening: true,
+      userSpeaking: true,
+    });
+    for (let t = 100; t <= 600; t += 50) {
+      listenUserFrame = stepExpressionEngine(convState, t, {
+        ...options,
+        mirrorMode: false,
+        listening: true,
+        userSpeaking: true,
+      });
+    }
+    expect(Math.abs(listenUserFrame.gazeX)).toBeLessThan(0.15);
+
+    let thinkAfterFrame = stepExpressionEngine(convState, 650, {
+      ...options,
+      mirrorMode: false,
+      listening: false,
+      thinking: true,
+    });
+    for (let t = 700; t <= 1250; t += 50) {
+      thinkAfterFrame = stepExpressionEngine(convState, t, {
+        ...options,
+        mirrorMode: false,
+        listening: false,
+        thinking: true,
+      });
+    }
+    expect(Math.abs(thinkAfterFrame.gazeX)).toBeGreaterThan(0.25);
+    expect(thinkAfterFrame.gazeY).toBeGreaterThan(0.05);
+    vi.restoreAllMocks();
+  });
+
+  it("mirrors lip pucker contraction and distinguishes closed-lip smiles from teeth-parted smiles", () => {
+    const stepObs = (obs: Partial<UserFaceObservation>) => {
+      const s = createExpressionEngine(0);
+      let f = stepExpressionEngine(s, 50, {
+        ...options,
+        userFace: { ...face, headYaw: 0, gazeX: 0, updatedAt: 50, ...obs },
+      });
+      for (let t = 100; t <= 850; t += 50) {
+        f = stepExpressionEngine(s, t, {
+          ...options,
+          userFace: { ...face, headYaw: 0, gazeX: 0, updatedAt: t, ...obs },
+        });
+      }
+      return f;
+    };
+
+    const kiss = stepObs({ mouthPucker: 0.88, mouthOpen: 0, smile: 0 });
+    expect(kiss.pucker).toBeGreaterThan(0.65);
+    expect(kiss.smileTeeth).toBeLessThan(0.2);
+
+    const closedSmile = stepObs({ smile: 0.85, mouthOpen: 0, mouthPress: 0.1, mouthPucker: 0 });
+    expect(closedSmile.smile).toBeGreaterThan(0.6);
+    expect(closedSmile.smileTeeth).toBeLessThan(0.2);
+
+    const teethSmile = stepObs({ smile: 0.85, mouthOpen: 0.12, mouthPress: 0, mouthPucker: 0 });
+    expect(teethSmile.smile).toBeGreaterThan(0.6);
+    expect(teethSmile.smileTeeth).toBeGreaterThan(0.75);
+  });
+
+  it("mirrors wide-eyed openness directly and echoes remembered eyeWide/pucker softly while speaking", () => {
+    const mState = createExpressionEngine(0);
+    let mFrame = stepExpressionEngine(mState, 50, {
+      ...options,
+      userFace: { ...face, eyeWide: 0.85, mouthOpen: 0, headYaw: 0, gazeX: 0, updatedAt: 50 },
+    });
+    for (let t = 100; t <= 850; t += 50) {
+      mFrame = stepExpressionEngine(mState, t, {
+        ...options,
+        userFace: { ...face, eyeWide: 0.85, mouthOpen: 0, headYaw: 0, gazeX: 0, updatedAt: t },
+      });
+    }
+    expect(mFrame.eyeWide).toBeGreaterThan(0.75);
+
+    // Non-mirror conversational mode: sustain eyeWide + pucker, pause to neutral, then speak
+    const cState = createExpressionEngine(0);
+    for (let t = 50; t <= 850; t += 100) {
+      stepExpressionEngine(cState, t, {
+        ...options,
+        mirrorMode: false,
+        listening: true,
+        userFace: {
+          ...face,
+          eyeWide: 0.85,
+          mouthPucker: 0.82,
+          mouthOpen: 0,
+          headYaw: 0,
+          gazeX: 0,
+          updatedAt: t,
+        },
+      });
+    }
+    for (let t = 950; t <= 4200; t += 100) {
+      stepExpressionEngine(cState, t, {
+        ...options,
+        mirrorMode: false,
+        listening: false,
+      });
+    }
+    let talkFrame = cState as unknown as ReturnType<typeof stepExpressionEngine>;
+    for (let t = 4250; t <= 5150; t += 50) {
+      talkFrame = stepExpressionEngine(cState, t, {
+        ...options,
+        mirrorMode: false,
+        active: true,
+        visemes: { level: 0.4, open: 0.35, wide: 0.05, round: 0.05 },
+      });
+    }
+    expect(talkFrame.eyeWide).toBeGreaterThan(0.08);
+  });
+
+  it("varies speech tempo faster for excited/urgent speech and slower for reflective speech", () => {
+    const fast = dynamicSpeechTempo("¡Corre, mira rápido! ¡Qué increíble!!", "euphoric");
+    const slow = dynamicSpeechTempo("Lo siento mucho… respira despacio, todo irá bien…", "sad");
+    expect(fast.tempo).toBe("fast");
+    expect(fast.rate).toBeGreaterThan(1.12);
+    expect(slow.tempo).toBe("slow");
+    expect(slow.rate).toBeLessThan(0.89);
+    expect(fast.rate - slow.rate).toBeGreaterThan(0.28);
+  });
+
+  it("converges fast in directMirror (~150ms) and drives lively active speech brow/head motion", () => {
+    const fastState = createExpressionEngine(0);
+    let mFrame = stepExpressionEngine(fastState, 50, {
+      ...options,
+      userFace: { ...face, headYaw: 0.45, mouthOpen: 0.85, gazeX: 0, updatedAt: 50 },
+    });
+    for (let t = 83; t <= 160; t += 33) {
+      mFrame = stepExpressionEngine(fastState, t, {
+        ...options,
+        userFace: { ...face, headYaw: 0.45, mouthOpen: 0.85, gazeX: 0, updatedAt: t },
+      });
+    }
+    expect(mFrame.headYaw).toBeGreaterThan(0.38);
+    expect(mFrame.open).toBeGreaterThan(0.65);
+
+    const talkState = createExpressionEngine(0);
+    let maxBrow = 0;
+    for (let t = 50; t <= 900; t += 50) {
+      const f = stepExpressionEngine(talkState, t, {
+        ...options,
+        mirrorMode: false,
+        active: true,
+        visemes: { level: 0.72, open: 0.65, wide: 0.25, round: 0.1, stress: 0.8 },
+      });
+      maxBrow = Math.max(maxBrow, f.innerBrowY);
+    }
+    expect(maxBrow).toBeGreaterThan(0.18);
   });
 });

@@ -98,4 +98,39 @@ describe("Subconscious camera empathy carryover", () => {
     expect(frame.noseScrunch).toBeGreaterThan(0.1);
     expect(frame.headYaw).toBeGreaterThan(0.03);
   });
+
+  it("remembers prior user gestures and subtly replays them during active speech after cooldown", () => {
+    const state = createObservedEmpathy(0);
+    const makeGesture = (t: number) =>
+      observation(t, 0, {
+        emotion: "neutral",
+        eyeSquint: 0,
+        mouthOpen: 0,
+        eyeWide: 0.85,
+        mouthPucker: 0.82,
+        headYaw: 0.45,
+      });
+
+    // Sustain gesture for >= 650ms so it enters motif memory
+    for (let t = 0; t <= 800; t += 100) {
+      stepObservedEmpathy(state, t, makeGesture(t), { active: false, listening: true });
+    }
+    expect(state.history.length).toBeGreaterThan(0);
+
+    // Wait out the initial trigger hold (until t=3900) & decay while user returns to neutral
+    let frame = state.current;
+    for (let t = 850; t <= 5600; t += 50) {
+      frame = stepObservedEmpathy(state, t, undefined, { active: false, listening: false });
+    }
+    expect(frame.pucker).toBeLessThan(0.05);
+    expect(frame.eyeWide).toBeLessThan(0.05);
+
+    // Avatar begins speaking -> schedules remembered motif quietly after ~240ms delay
+    for (let t = 5650; t <= 6550; t += 50) {
+      frame = stepObservedEmpathy(state, t, undefined, { active: true, listening: false });
+    }
+    expect(frame.pucker).toBeGreaterThan(0.12);
+    expect(frame.eyeWide).toBeGreaterThan(0.12);
+    expect(frame.headYaw).toBeGreaterThan(0.04);
+  });
 });
